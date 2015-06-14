@@ -6,128 +6,155 @@
 
 import os, sys, re
 
+debug = False
+
 # REGEX
 keyword=r"(boolean|else|false|fi|function|if|integer|read|real|return|true|while|write)"
 real=r"[0-9]+.[0-9]+"
-integer=r"[0-9]+"
+integer=r"^[0-9]+"
 identifier=r"[a-z]|([a-z]([0-9]|[a-z])+[a-z])"
-operator=r"[><+/]"
+operator=r"[><+*-/]"
 separator=r"[,;(){}]"
-debug = False
 
 # Functions
 def getToken(n):
-	token = "------"
-	if n == 1:
-		token = "keyword"
-	elif n == 2:
-		token = "operator"
-	elif n == 3:
-		token = "separator"
+	if n == 1 or n == 2 or n == 3:
+		token = None
 	elif n == 4:
 		token = "real\t"
 	elif n == 5:
 		token = "integer"
 	elif n == 6:
-		token = "identifier"
+		token = "operator"
 	elif n == 7:
+		token = "separator"
+	elif n == 8:
+		token = "keyword"
+	elif n == 9:
+		token = "identifier"
+	else:
 		token = "unknown"
 	return token
 
-def fsm(state, char, array):
-	# Keywords
-	stack = ''.join(str(e) for e in array)
-	if re.match(keyword, stack):
-		del array[:]
-		if not char.isspace():
-			array.append(char)
-		return 1, stack
-	elif re.match(keyword, stack+char):
-		del array[:]
-		return 1, stack+char
-	# Real
-	elif re.match(real, stack) and not re.match(r"[0-9]", char):
-		del array[:]
-		if not char.isspace():
-			array.append(char)
-		return 4, stack
-	# Integer
-	elif re.match(integer, stack) and not re.match(r"[0-9]|.", char):
-		del array[:]
-		if not char.isspace():
-			array.append(char)
-		return 5, stack
-	# Identifier
-	elif re.match(identifier, stack) and not re.match(r"[a-z]", char):
-		del array[:]
-		if not char.isspace():
-			array.append(char)
-		return 6, stack
-	# Operators
-	elif re.match(operator, stack):
-		array.pop()
-		return 2, stack
-	elif re.match(operator, char):
-		return 2, char
-	elif re.match(r"[!|=]", stack) and char == "=":
-		array.pop()
-		return 2, stack+char
-	elif stack == "=" and char != "=":
-		array.pop()
-		return 2, stack
-	# Separators
-	elif re.match(separator, stack):
-		array.pop()
-		return 3, stack
-	elif re.match(separator, char):
-		return 3, char
-	elif stack == "$" and char == "$":
-		array.pop()
-		return 3, stack+char
-	# Whitespace
-	elif char.isspace():
-		#print("%%%%%%%%")
-		del array[:]
-		return 0, None
-	# Unknown
-	else:
-		if not char.isspace():
-			array.append(char)
-		return 0, char
-
-def lexer():
+def readfile(stage):
 	try:
-		f = open(filename, 'r')
+		with open(filename, 'r', 1) as f:
+			if stage > 0:
+				print("#", "\t", "TOKEN", "\t\t", "LEXEME")
+				num = 1
+				array = []
+
+				run = True
+				while run:
+					if array:
+						char = array[-1]
+						array.pop()
+					else:
+						char = f.read(1)
+
+					if not char: 
+						break
+					elif char == '\n':
+						num += 1
+					else:
+						lexer(f, char, array, num)
+
 	except ValueError: "cannot open file"
-
-	print("#", "\t", "TOKEN", "\t\t", "LEXEME")
-	token = "unknown"
-	num = 0
-	state = 0
-	char = []
-	array = []
-
-	for line in f:
-		num += 1
-		line = line.rstrip()
-		line = line.lower()
-
-		for i in range(len(line)):
-			char = line[i]
-
-			state, lexeme = fsm(state, char, array)
-			token = getToken(state)
-
-			if debug:
-				if(token != "------"):
-					print(num, "\t", token, "\t", lexeme, "\t\tstack: ", array)
-				else:
-					print("\t\t\t", char, "\t\tstack: ", array)
-			else:
-				if(token != "------"):
-					print(num, "\t", token, "\t", lexeme)
-
 	f.close()
+
+def lexer(f, char, array, num):
+	token = None
+	lexeme = None
+	state = 0
+
+	while state <= 3:
+		if state == 0:
+			if re.match(operator, char):
+				lexeme = char
+				state = 6
+			elif re.match(separator, char):
+				lexeme = char
+				state = 7
+			elif re.match(r"[!|=]", char):
+				array.append(char)
+				state = 1
+			elif char == "$":
+				array.append(char)
+				state = 1
+			elif re.match(r"[0-9]", char):
+				array.append(char)
+				state = 2
+			elif re.match(r"[a-z]", char):
+				array.append(char)
+				state = 3
+			else:
+				del array[:]
+				state = 10
+		elif state == 1:
+			char = f.read(1)
+			stack = ''.join(str(e) for e in array)
+			if re.match(r"[!=|==]", stack+char):
+				lexeme = stack+char
+				array.pop()
+				state = 6
+			elif stack+char == "$$":
+				lexeme = stack+char
+				array.pop()
+				state = 7
+			else:
+				del array[:]
+				state = 11
+		elif state == 2:
+			char = f.read(1)
+			stack = ''.join(str(e) for e in array)
+			if re.match(real, stack) and not re.match(r"[0-9]", char):
+				lexeme = stack
+				del array[:]
+				array.append(char)
+				state = 4
+			elif re.match(integer, stack) and not re.match(r"[0-9]|\.", char):
+				lexeme = stack
+				del array[:]
+				array.append(char)
+				state = 5
+			elif re.match(r"[0-9]|\.", char):
+				array.append(char)
+				state = 2
+			else:
+				del array[:]
+				state = 12
+		elif state == 3:
+			char = f.read(1)
+			stack = ''.join(str(e) for e in array)
+			if re.match(keyword, stack) and not re.match(r"[a-z]", char):
+				lexeme = stack
+				del array[:]
+				array.append(char)
+				state = 8
+			elif re.match(identifier, stack) and not re.match(r"[a-z]", char):
+				lexeme = stack
+				del array[:]
+				array.append(char)
+				state = 9
+			elif re.match(r"[0-9]|[a-z]", char):
+				array.append(char)
+				state = 3
+			else:
+				del array[:]
+				state = 13
+
+	token = getToken(state)
+
+	if debug:
+		if(lexeme != None):
+			print(num, "\t", token, "\t", lexeme, "\t\tstack: ", array)
+		else:
+			print("\t\t\t", char, "\t\tstack: ", array)
+	else:
+		if(lexeme != None):
+			print(num, "\t", token, "\t", lexeme)
+
+	return token, lexeme
 
 
 # Sanity checks
@@ -144,18 +171,18 @@ else:
 
 # Check file exists
 if not os.path.isfile(filename):
-	print("ERROR: Argument must be a valid file name")
+	print("ARRRR: Argument must be a valid file name")
 	exit(2)
 
 # Parse parameters
 if option == "all":
 	print("==> running lexer")
-	lexer()
+	readfile(1)
 elif option == "--debug":
 	debug = True
-	lexer()
+	readfile(1)
 elif option == "lexer" or option == "--lexer":
-	lexer()
+	readfile(1)
 else:
 	print("ARRRR: unknown function call")
 	exit(3)
