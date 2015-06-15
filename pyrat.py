@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
+# version = 0.6
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
@@ -8,6 +9,7 @@ import os, sys, re
 
 debug = False
 test = False
+logfile = True
 
 # REGEX
 keyword=r"(boolean|else|false|fi|function|if|integer|read|real|return|true|while|write)"
@@ -48,8 +50,11 @@ def readfile(stage, n=1):
 
 				if debug:
 					print("#", "\t", "TOKEN", "\t\t", "LEXEME")
-				elif not test:
+				elif not test and not logfile:
 					print("TOKEN", "\t\t", "LEXEME")
+
+				if logfile:
+					log = open("pyrat.log", 'w')
 
 				run = True
 				# Read file one character at a time
@@ -74,12 +79,16 @@ def readfile(stage, n=1):
 								count += 1
 						elif debug:
 							if(lexeme != None):
-								print(num, "\t", token, "\t", lexeme, "\t\tstack: ", array)
+								print("{0:2} {1:4} {2:15} {3:10} {4:10} {5}".format(num, "", token, lexeme, "stack: ", array))
 							else:
-								print("\t\t\t", char, "\t\tstack: ", array)
+								print("{0:2} {1:4} {2:15} {3:10} {4:10} {5}".format("", "", char, "", "stack: ", array))
+						elif logfile:
+							if(lexeme != None):
+								log.write("{0:15} {1}\n".format(token, lexeme))
 						else:
 							if(lexeme != None):
-								print(token, "\t", lexeme)
+								print("{0:15} {1}".format(token, lexeme))
+
 
 	except ValueError: "cannot open file"
 	f.close()
@@ -110,7 +119,11 @@ def lexer(f, char, array, num):
 			elif re.match(r"[a-z]", char):
 				array.append(char)
 				state = 3
+			elif char.isspace():
+				del array[:]
+				state = 10
 			else:
+				lexeme = char
 				del array[:]
 				state = 10
 		# Finite State Machine (2 char operator or separator)
@@ -123,6 +136,11 @@ def lexer(f, char, array, num):
 				lexeme = stack+char
 				array.pop()
 				state = 6
+			elif stack == "$" and char != "$":
+				lexeme = stack
+				array.pop()
+				array.append(char)
+				state = 11
 			elif re.match(r"[!|=]", stack) and char == "=":
 				lexeme = stack+char
 				array.pop()
@@ -132,6 +150,9 @@ def lexer(f, char, array, num):
 				array.pop()
 				array.append(char)
 				state = 7
+			elif char.isspace():
+				del array[:]
+				state = 11
 			else:
 				del array[:]
 				state = 11
@@ -153,6 +174,9 @@ def lexer(f, char, array, num):
 			elif re.match(r"[0-9]|\.", char):
 				array.append(char)
 				state = 2
+			elif char.isspace():
+				del array[:]
+				state = 12
 			else:
 				del array[:]
 				state = 12
@@ -174,6 +198,9 @@ def lexer(f, char, array, num):
 			elif re.match(r"[0-9]|[a-z]", char):
 				array.append(char)
 				state = 3
+			elif char.isspace():
+				del array[:]
+				state = 13
 			else:
 				del array[:]
 				state = 13
@@ -297,10 +324,12 @@ elif not os.path.isfile(filename):
 if option == "all":
 	print("==> running lexer")
 	readfile(1)
+	print("==> saved to pyrat.log")
 elif option == "--debug" or option == "-d":
 	debug = True
 	readfile(1)
 elif option == "--lexer" or option == "-l":
+	logfile = False
 	readfile(1)
 elif option == "--test" or option == "-t":
 	test = True
@@ -310,6 +339,7 @@ elif option == "--test" or option == "-t":
 	unit_test(2)
 	print("\n==> running unit test 3")
 	unit_test(3)
+	os.remove(filename)
 else:
 	print("ARRRR: unknown function call")
 	exit(3)
