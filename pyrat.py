@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
-# version = 0.6
+# version = 0.8
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
 import os, sys, re
 
+# Flags
 debug = False
 test = False
 logfile = True
 
 # REGEX
-keyword=r"(boolean|else|false|fi|function|if|integer|read|real|return|true|while|write)"
-real=r"[0-9]+.[0-9]+"
-integer=r"^[0-9]+"
-identifier=r"[a-z]|([a-z]([0-9]|[a-z])+[a-z])"
-operator=r"[><+*-/]"
-separator=r"[,;(){}]"
+keyword = r"boolean|else|false|fi|function|if|integer|read|real|return|true|while|write"
+real = r"^[0-9]+\.[0-9]+$"
+integer = r"^[0-9]+$"
+identifier = r"^[a-z]([0-9]|[a-z])*[a-z]$|^[a-z]$"
+operator = r"[></]|[+*-]"
+separator = r"[,;\(\){}]"
+symbols = r"[></]|[+*-]|[,;\(\){}]"
 
 # Functions
 def getToken(n):
@@ -47,6 +49,7 @@ def readfile(stage, n=1):
 				array = []
 				count = 0
 				num = 1
+				errors = 0
 
 				if debug:
 					print("#", "\t", "TOKEN", "\t\t", "LEXEME")
@@ -73,22 +76,25 @@ def readfile(stage, n=1):
 					else:
 						token, lexeme = lexer(f, char, array, num)
 
-						if test:
-							if(lexeme != None):
-								compare_token(count, token, lexeme, n)
-								count += 1
-						elif debug:
-							if(lexeme != None):
-								print("{0:2} {1:4} {2:15} {3:10} {4:10} {5}".format(num, "", token, lexeme, "stack: ", array))
-							else:
+						if lexeme == None:
+							if debug:
 								print("{0:2} {1:4} {2:15} {3:10} {4:10} {5}".format("", "", char, "", "stack: ", array))
+						elif test:
+							errors = compare_token(count, token, lexeme, errors, n)
+							count += 1
+						elif debug:
+							print("{0:2} {1:4} {2:15} {3:10} {4:10} {5}".format(num, "", token, lexeme, "stack: ", array))
 						elif logfile:
-							if(lexeme != None):
-								log.write("{0:15} {1}\n".format(token, lexeme))
+							log.write("{0:15} {1}\n".format(token, lexeme))
 						else:
-							if(lexeme != None):
-								print("{0:15} {1}".format(token, lexeme))
+							print("{0:15} {1}".format(token, lexeme))
 
+						if stage > 1 and lexeme != None:
+							checkgrammer
+
+				if errors > 0:
+					print("ARRRR: Unit test", n, "failed")
+					
 
 	except ValueError: "cannot open file"
 	f.close()
@@ -113,12 +119,15 @@ def lexer(f, char, array, num):
 			elif char == "$":
 				array.append(char)
 				state = 1
-			elif re.match(r"[0-9]", char):
+			elif re.match(r"[0-9]|\.", char):
 				array.append(char)
 				state = 2
 			elif re.match(r"[a-z]", char):
 				array.append(char)
 				state = 3
+			elif re.match(r"\.", char):
+				array.append(char)
+				state = 10
 			elif char.isspace():
 				del array[:]
 				state = 10
@@ -150,10 +159,8 @@ def lexer(f, char, array, num):
 				array.pop()
 				array.append(char)
 				state = 7
-			elif char.isspace():
-				del array[:]
-				state = 11
 			else:
+				lexeme = stack
 				del array[:]
 				state = 11
 		# Finite State Machine (real or integer)
@@ -166,18 +173,16 @@ def lexer(f, char, array, num):
 				del array[:]
 				array.append(char)
 				state = 4
-			elif re.match(integer, stack) and not re.match(r"[0-9]|\.", char):
+			elif re.match(integer, stack) and not re.match(r"[0-9]", char) and (re.match(symbols, char) or char.isspace()):
 				lexeme = stack
 				del array[:]
 				array.append(char)
 				state = 5
-			elif re.match(r"[0-9]|\.", char):
+			elif not char.isspace():
 				array.append(char)
 				state = 2
-			elif char.isspace():
-				del array[:]
-				state = 12
 			else:
+				lexeme = stack
 				del array[:]
 				state = 12
 		# Finite State Machine (keyword or identifier)
@@ -190,26 +195,29 @@ def lexer(f, char, array, num):
 				del array[:]
 				array.append(char)
 				state = 8
-			elif re.match(identifier, stack) and not re.match(r"[a-z]", char):
+			elif re.match(identifier, stack) and not re.match(r"[0-9]|[a-z]", char) and (re.match(symbols, char) or char.isspace()):
 				lexeme = stack
 				del array[:]
 				array.append(char)
 				state = 9
-			elif re.match(r"[0-9]|[a-z]", char):
+			elif not char.isspace():
 				array.append(char)
 				state = 3
-			elif char.isspace():
-				del array[:]
-				state = 13
 			else:
+				lexeme = stack
 				del array[:]
 				state = 13
+
+		if debug and not char.isspace():
+			print("{0:2} {1:4} {2:15} {3:10} {4:10} {5}".format("", "=> ", char, "", "stack: ", array))
 
 	token = getToken(state)
 
 	return token, lexeme
 
 def unit_test(n):
+	print("==> running unit test", n)
+
 	if n == 1:
 		testcase = """
 while (fahr < upper) a = 23.00;"""
@@ -244,16 +252,31 @@ $$
 		low = low + step;
 	}
 $$"""
+	elif n == 4:
+		testcase = """
+        Function 000 
+   (  ) ;   :
+ {  } int  IDs     boolean, rEAL :=  begin end 
+  if  (Condition) else Statement fi  while   do 
+ return; read write
+  =     !=       <<> ==      + -//  *  $$
+123.000 0.0 Rat11SS
+true     false     axy123r  a
+&  123abc .123  !  a_x   a123 123.
+
+"""
 
 	try:
 		f = open(filename, 'w')
 		f.write(testcase)
 	except ValueError: "cannot write file"
 	f.close()
+
 	print(testcase, "\n================")
 	readfile(1, n)
 
-def compare_token(count, token, lexeme, n):
+
+def compare_token(count, token, lexeme, errors, n):
 	if n == 1:
 		token_unit = ['keyword', 'separator', 'identifier', 'operator', 'identifier',\
 					  'separator', 'identifier', 'operator', 'real', 'separator']
@@ -284,6 +307,20 @@ def compare_token(count, token, lexeme, n):
 					   'step', ')', ';', 'while', '(', 'low', '<', 'high', ')', '{', 'write', '(', 'low',\
 					   ')', ';', 'write', '(', 'convert', '(', 'low', ')', ')', ';', 'low', '=', 'low',\
 					   '+', 'step', ';', '}', '$$']
+	elif n == 4:
+		token_unit = ['keyword', 'integer', 'separator', 'separator', 'separator', 'unknown', 'separator',\
+					  'separator', 'identifier', 'identifier', 'keyword', 'separator', 'keyword', 'unknown',\
+					   'operator', 'identifier', 'identifier', 'keyword', 'separator', 'identifier', 'separator',\
+					   'keyword', 'identifier', 'keyword', 'keyword', 'identifier', 'keyword', 'separator',\
+					   'keyword', 'keyword', 'operator', 'operator', 'operator', 'operator', 'operator', 'operator',\
+					   'operator', 'operator', 'operator', 'operator', 'operator', 'separator', 'real', 'real',\
+					   'identifier', 'keyword', 'keyword', 'identifier', 'identifier', 'unknown', 'unknown', 'unknown',\
+					   'unknown', 'unknown', 'unknown', 'unknown' ]
+		lexeme_unit = ['function', '000', '(', ')', ';', ':', '{', '}', 'int', 'ids', 'boolean', ',',\
+					   'real', ':', '=', 'begin', 'end', 'if', '(', 'condition', ')', 'else', 'statement', 'fi',\
+					   'while', 'do', 'return', ';', 'read', 'write', '=', '!=', '<', '<', '>', '==', '+',\
+					   '-', '/', '/', '*', '$$', '123.000', '0.0', 'rat11ss', 'true', 'false', 'axy123r', 'a',\
+					   '&', '123abc', '.123', '!', 'a_x', 'a123', '123.']
 	else:
 		print("ARRRR: Invalid test case")
 		exit(4)
@@ -293,11 +330,14 @@ def compare_token(count, token, lexeme, n):
 			status = "OK"
 		else:
 			status = "FAIL"
+			errors += 1
 
 		print("{0:10} {1:10} {2:15} {3:10} {4}".format(status, token_unit[count], lexeme_unit[count], token, lexeme))
 	else:
 		print("==> FATAL ERROR: unexpected EOF")
 		exit(5)
+
+	return errors
 
 # Sanity checks
 option = "all"
@@ -308,7 +348,7 @@ elif len(sys.argv) == 2:
 	filename = sys.argv[1]
 else:
 	print("USAGE: pyrat.py [file]")
-	print("USAGE: pyrat.py [--debug|--lexer] [file]")
+	print("USAGE: pyrat.py [-d|-l|-s] [file]")
 	print("USAGE: pyrat.py --test")
 	exit(1)
 
@@ -316,6 +356,11 @@ else:
 if filename == "--test" or filename == "-t":
 	option = "--test"
 	filename = "pyrat.tmp"
+elif filename == "-h" or filename == "--help":
+	print("USAGE: pyrat.py [file]")
+	print("USAGE: pyrat.py [-d|-l|-s] [file]")
+	print("USAGE: pyrat.py --test")
+	exit(1)
 elif not os.path.isfile(filename):
 	print("ARRRR: Argument must be a valid file name")
 	exit(2)
@@ -333,12 +378,10 @@ elif option == "--lexer" or option == "-l":
 	readfile(1)
 elif option == "--test" or option == "-t":
 	test = True
-	print("==> running unit test 1")
 	unit_test(1)
-	print("\n==> running unit test 2")
 	unit_test(2)
-	print("\n==> running unit test 3")
 	unit_test(3)
+	unit_test(4)
 	os.remove(filename)
 else:
 	print("ARRRR: unknown function call")
