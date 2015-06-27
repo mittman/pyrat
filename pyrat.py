@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
-# version = 0.8
+# version = 0.9
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
@@ -11,6 +11,7 @@ import os, sys, re
 debug = False
 test = False
 logfile = True
+verbose = False
 
 # REGEX
 keyword = r"boolean|else|false|fi|function|if|integer|read|real|return|true|while|write"
@@ -22,6 +23,19 @@ separator = r"[,;\(\){}]"
 symbols = r"[></]|[+*-]|[,;\(\){}]"
 
 # Functions
+def printRule(text):
+	if verbose:
+		print("  " + text)
+
+def printBold(text):
+	if verbose:
+		print('\033[1m' + text + '\033[0m')
+
+def printError(expected, token, lexeme, num):
+	print("\033[1;31m  Syntax Error:\033[0m expected \033[1m{0:5}\033[0m but \033[1m{1:5}\033[0m {2} given, line {3}".format(expected, token, lexeme, num))
+	#exit(10)
+	return False
+
 def getToken(n):
 	# State 1, 2, 3 are non-accepting states
 	if n == 1 or n == 2 or n == 3:
@@ -42,15 +56,17 @@ def getToken(n):
 		token = "unknown"
 	return token
 
-def readfile(stage, n=1):
+num = 1
+
+def target(stage, n=1):
 	try:
 		with open(filename, 'r', 1) as f:
-			if stage > 0:
-				array = []
-				count = 0
-				num = 1
-				errors = 0
+			array = []
+			count = 0
 
+			errors = 0
+
+			if stage == 1:
 				if debug:
 					print("#", "\t", "TOKEN", "\t\t", "LEXEME")
 				elif not test and not logfile:
@@ -58,48 +74,162 @@ def readfile(stage, n=1):
 
 				if logfile:
 					log = open("pyrat.log", 'w')
+					lexer(array, count, errors, f, n, stage, log)
+				else:
+					lexer(array, count, errors, f, n, stage)
 
-				run = True
-				# Read file one character at a time
-				while run:
-					if array:
-						char = array[-1]
-						array.pop()
-					else:
-						char = f.read(1)
-						char = char.lower()
+			elif stage == 2:
+				if checkRat("start", array, count, errors, f, n, stage):
+					while statementList(array, count, errors, f, n, stage):
+						pass
+					if checkRat("end", array, count, errors, f, n, stage):
+						try:
+							token, lexeme = lexer(array, count, errors, f, n, stage)
+							if lexeme != None:
+								printError("end of file", token, lexeme, num)
+						except TypeError: "EOF"
 
-					if not char: 
-						break
-					elif char == '\n':
-						num += 1
-					else:
-						token, lexeme = lexer(f, char, array, num)
-
-						if lexeme == None:
-							if debug:
-								print("{0:2} {1:4} {2:15} {3:10} {4:10} {5}".format("", "", char, "", "stack: ", array))
-						elif test:
-							errors = compare_token(count, token, lexeme, errors, n)
-							count += 1
-						elif debug:
-							print("{0:2} {1:4} {2:15} {3:10} {4:10} {5}".format(num, "", token, lexeme, "stack: ", array))
-						elif logfile:
-							log.write("{0:15} {1}\n".format(token, lexeme))
-						else:
-							print("{0:15} {1}".format(token, lexeme))
-
-						if stage > 1 and lexeme != None:
-							checkgrammer
-
-				if errors > 0:
-					print("ARRRR: Unit test", n, "failed")
-					
 
 	except ValueError: "cannot open file"
 	f.close()
 
-def lexer(f, char, array, num):
+
+def checkRat(pos, array, count, errors, f, n, stage):
+	token, lexeme = lexer(array, count, errors, f, n, stage)
+	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
+	if lexeme == "$$":
+		if pos == "start":
+			printRule("<Rat15su> ::= $$ <Opt Function Definitions> $$ <Opt Declaration List> <Statement List> $$")
+	else:
+		printError("separator", token, lexeme, num)
+	return True
+
+def compound(array, count, errors, f, n, stage):
+	printRule("<Compound> ::= { <Statement List> }")
+	return statementList(array, count, errors, f, n, stage)
+
+def statementList(array, count, errors, f, n, stage):
+	printRule("<Statement List> ::= <Statement> <Statement List>")
+	return statement(array, count, errors, f, n, stage)
+	#	print("==> yes 3")
+	#return True
+
+def statement(array, count, errors, f, n, stage):
+	token, lexeme = lexer(array, count, errors, f, n, stage)
+	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
+	if token == "identifier":
+		return assign(array, count, errors, f, n, stage)
+	elif token == "separator" and lexeme == "{":
+		return compound(array, count, errors, f, n, stage)
+	elif token == "keyword" and lexeme == "if":
+		return ifCond(array, count, errors, f, n, stage)
+	elif token == "keyword" and lexeme == "read":
+		return readCond(array, count, errors, f, n, stage)
+	elif token == "keyword" and lexeme == "return":
+		return returnCond(array, count, errors, f, n, stage)
+	elif token == "keyword" and lexeme == "while":
+		return whileCond(array, count, errors, f, n, stage)
+	elif token == "keyword" and lexeme == "write":
+		return writeCond(array, count, errors, f, n, stage)
+	elif token == "separator" and lexeme == "}":
+		return False
+	else:
+		printError("<Statement>", token, lexeme, num)
+
+
+def assign(array, count, errors, f, n, stage):
+	printRule("<Statement> ::= <Assign>")
+	printRule("<Assign> ::= <Identifier> = <Expression>")
+	token, lexeme = lexer(array, count, errors, f, n, stage)
+	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
+	if token == "operator" and lexeme == "=":
+		return expression(array, count, errors, f, n, stage)
+	else:
+		printError("=", token, lexeme, num)
+
+def expression(array, count, errors, f, n, stage):
+	token, lexeme = lexer(array, count, errors, f, n, stage)
+	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
+	if token == "identifier":
+		printRule("<Expression> ::= <Term> <Expression Prime>")
+		printRule("<Term> := <Factor> <Term Prime>")
+		printRule("<Factor> := <Identifier>")
+		return expressionPrime(array, count, errors, f, n, stage)
+	else:
+		printError("identifier", token, lexeme, num)
+
+def expressionPrime(array, count, errors, f, n, stage):
+	token, lexeme = lexer(array, count, errors, f, n, stage)
+	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
+	if token == "operator" and (lexeme == "+" or lexeme == "-"):
+		printRule("<Term Prime> := ɛ")
+		printRule("<Expresion Prime> := + <Term> <Expression Prime>")
+		return term(array, count, errors, f, n, stage)
+	else:
+		printError("+ or -", token, lexeme, num)
+
+def term(array, count, errors, f, n, stage):
+	token, lexeme = lexer(array, count, errors, f, n, stage)
+	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
+	if token == "identifier":
+		printRule("<Term> := <Factor> <Term Prime>")
+		printRule("<Factor> := <Identifier>")
+		return termPrime(array, count, errors, f, n, stage)
+	else:
+		printError("identifier", token, lexeme, num)
+
+def termPrime(array, count, errors, f, n, stage):
+	token, lexeme = lexer(array, count, errors, f, n, stage)
+	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
+	if token == "separator" and lexeme == ";":
+		printRule("<Term Prime> := ɛ")
+		printRule("<Expresion Prime> := ɛ")
+	else:
+		printError(";", token, lexeme, num)
+
+	return True
+
+
+def lexer(array, count, errors, f, n, stage, log=None):
+
+	run = True
+	# Read file one character at a time
+	while run:
+		if array:
+			char = array[-1]
+			array.pop()
+		else:
+			char = f.read(1)
+			char = char.lower()
+
+		if not char:
+			break
+		elif char == '\n':
+			global num
+			num += 1
+		else:
+			token, lexeme = fsm(f, char, array)
+
+			if lexeme == None:
+				if debug:
+					print("{0:2} {1:4} {2:15} {3:10} {4:10} {5}".format("", "", char, "", "stack: ", array))
+			elif test:
+				errors = compare_token(count, token, lexeme, errors, n)
+				count += 1
+			elif debug:
+				print("{0:2} {1:4} {2:15} {3:10} {4:10} {5}".format(num, "", token, lexeme, "stack: ", array))
+			elif logfile:
+				log.write("{0:15} {1}\n".format(token, lexeme))
+			elif stage > 1:
+				return token, lexeme
+			else:
+				print("{0:15} {1}".format(token, lexeme))
+
+	if errors > 0:
+		print("ARRRR: Unit test", n, "failed")
+
+
+def fsm(f, char, array):
 	token = None
 	lexeme = None
 	state = 0
@@ -273,7 +403,7 @@ true     false     axy123r  a
 	f.close()
 
 	print(testcase, "\n================")
-	readfile(1, n)
+	target(1, n)
 
 
 def compare_token(count, token, lexeme, errors, n):
@@ -368,14 +498,18 @@ elif not os.path.isfile(filename):
 # Parse parameters
 if option == "all":
 	print("==> running lexer")
-	readfile(1)
+	target(1)
 	print("==> saved to pyrat.log")
 elif option == "--debug" or option == "-d":
 	debug = True
-	readfile(1)
+	target(1)
 elif option == "--lexer" or option == "-l":
 	logfile = False
-	readfile(1)
+	target(1)
+elif option == "--syntaxer" or option == "-s":
+	logfile = False
+	verbose = True
+	target(2)
 elif option == "--test" or option == "-t":
 	test = True
 	unit_test(1)
