@@ -38,7 +38,7 @@ stage = 0
 def printUsage():
 	print("USAGE: pyrat.py [file]")
 	print("USAGE: pyrat.py [-d|-l|-s] [file]")
-	print("USAGE: pyrat.py [--test|--test2]")
+	print("USAGE: pyrat.py [--test|--rules]")
 
 def printToken(text):
 	global logfile, stage
@@ -596,7 +596,7 @@ else:
 	exit(1)
 
 # Check file exists
-if re.match(r"\-t|\-tt|\-\-test|\-\-test2", option) and len(sys.argv) > 2:
+if re.match(r"\-t|\-r|\-\-test|\-\-rules", option) and len(sys.argv) > 2:
 	printUsage()
 	exit(1)
 
@@ -650,7 +650,7 @@ elif option == "--test" or option == "-t":
 	unit_test(3)
 	unit_test(4)
 	os.remove(temp)
-elif option == "--test2" or option == "-tt":
+elif option == "--rules" or option == "-r":
 	test = True
 	verbose = True
 	unit_test(1)
