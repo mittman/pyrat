@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
-# version = 0.9
+# version = 1.0
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
@@ -27,12 +27,16 @@ def printRule(text):
 	if verbose:
 		print("  " + text)
 
-def printBold(text):
+def printBold(token, lexeme):
 	if verbose:
-		print('\033[1m' + text + '\033[0m')
+		try:
+			print("\033[1mToken: {0:15} Lexeme: {1}\033[0m".format(token, lexeme))
+		except TypeError: "blank"
 
 def printError(expected, token, lexeme, num):
-	print("\033[1;31m  Syntax Error:\033[0m expected \033[1m{0:5}\033[0m but \033[1m{1:5}\033[0m {2} given, line {3}".format(expected, token, lexeme, num))
+	try:
+		print("\033[1;31m  Syntax Error:\033[0m expected \033[1m{0:5}\033[0m but \033[1m{1:5}\033[0m {2} given, line {3}".format(expected, token, lexeme, num))
+	except TypeError: "blank"
 	#exit(10)
 	return False
 
@@ -84,7 +88,7 @@ def target(stage, n=1):
 						pass
 					if checkRat("end", array, count, errors, f, n, stage):
 						try:
-							token, lexeme = lexer(array, count, errors, f, n, stage)
+							token, lexeme = getLex(array, count, errors, f, n, stage)
 							if lexeme != None:
 								printError("end of file", token, lexeme, num)
 						except TypeError: "EOF"
@@ -93,30 +97,32 @@ def target(stage, n=1):
 	except ValueError: "cannot open file"
 	f.close()
 
+def getLex(array, count, errors, f, n, stage):
+	token = None
+	lexeme = None
+	try:
+		token, lexeme = lexer(array, count, errors, f, n, stage)
+	except TypeError: "EOF"
+	return token, lexeme
 
 def checkRat(pos, array, count, errors, f, n, stage):
-	token, lexeme = lexer(array, count, errors, f, n, stage)
-	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
+	token, lexeme = getLex(array, count, errors, f, n, stage)
+	printBold(token, lexeme)
 	if lexeme == "$$":
 		if pos == "start":
 			printRule("<Rat15su> ::= $$ <Opt Function Definitions> $$ <Opt Declaration List> <Statement List> $$")
+		return True
 	else:
 		printError("separator", token, lexeme, num)
-	return True
-
-def compound(array, count, errors, f, n, stage):
-	printRule("<Compound> ::= { <Statement List> }")
-	return statementList(array, count, errors, f, n, stage)
 
 def statementList(array, count, errors, f, n, stage):
 	printRule("<Statement List> ::= <Statement> <Statement List>")
-	return statement(array, count, errors, f, n, stage)
-	#	print("==> yes 3")
-	#return True
+	while statement(array, count, errors, f, n, stage):
+		pass
 
 def statement(array, count, errors, f, n, stage):
-	token, lexeme = lexer(array, count, errors, f, n, stage)
-	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
+	token, lexeme = getLex(array, count, errors, f, n, stage)
+	printBold(token, lexeme)
 	if token == "identifier":
 		return assign(array, count, errors, f, n, stage)
 	elif token == "separator" and lexeme == "{":
@@ -132,24 +138,86 @@ def statement(array, count, errors, f, n, stage):
 	elif token == "keyword" and lexeme == "write":
 		return writeCond(array, count, errors, f, n, stage)
 	elif token == "separator" and lexeme == "}":
-		return False
+		return True
 	else:
 		printError("<Statement>", token, lexeme, num)
-
 
 def assign(array, count, errors, f, n, stage):
 	printRule("<Statement> ::= <Assign>")
 	printRule("<Assign> ::= <Identifier> = <Expression>")
-	token, lexeme = lexer(array, count, errors, f, n, stage)
-	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
+	token, lexeme = getLex(array, count, errors, f, n, stage)
+	printBold(token, lexeme)
 	if token == "operator" and lexeme == "=":
-		return expression(array, count, errors, f, n, stage)
+		if expression(array, count, errors, f, n, stage):
+			return termPrime(array, count, errors, f, n, stage)
 	else:
 		printError("=", token, lexeme, num)
 
+def compound(array, count, errors, f, n, stage):
+	printRule("<Compound> ::= { <Statement List> }")
+	return statementList(array, count, errors, f, n, stage)
+
+def ifCond(array, count, errors, f, n, stage):
+	printRule("<If> ::= if ( <Condition> ) <Statement> fi |")
+	printRule("         if ( <Condition> ) <Statement> else <Statement> fi")
+	token, lexeme = getLex(array, count, errors, f, n, stage)
+	printBold(token, lexeme)
+	if token == "separator" and lexeme == "(":
+		if conditionPrime(array, count, errors, f, n, stage):
+			if statement(array, count, errors, f, n, stage):
+				token, lexeme = getLex(array, count, errors, f, n, stage)
+				printBold(token, lexeme)
+				if token == "keyword" and lexeme == "fi":
+					return False
+				elif token == "keyword" and lexeme == "else":
+					if statement(array, count, errors, f, n, stage):
+						token, lexeme = getLex(array, count, errors, f, n, stage)
+						printBold(token, lexeme)
+						if token == "keyword" and lexeme == "fi":
+							return True
+		return True
+	else:
+		printError("(", token, lexeme, num)
+
+def conditionPrime(array, count, errors, f, n, stage):
+	if condition(array, count, errors, f, n, stage):
+		token, lexeme = getLex(array, count, errors, f, n, stage)
+		printBold(token, lexeme)
+		if token == "separator" and lexeme == ")":
+			return False
+		else:
+			printError(")", token, lexeme, num)
+
+def condition(array, count, errors, f, n, stage):
+	printRule("<Condition> ::= <Expression> <Relop> <Expression>")
+	if expression(array, count, errors, f, n, stage):
+		if relop(array, count, errors, f, n, stage):
+			return True
+	return False
+
+def readCond(array, count, errors, f, n, stage):
+	return
+
+def returnCond(array, count, errors, f, n, stage):
+	return
+
+def whileCond(array, count, errors, f, n, stage):
+	return
+
+def writeCond(array, count, errors, f, n, stage):
+	return
+
+def relop(array, count, errors, f, n, stage):
+	token, lexeme = getLex(array, count, errors, f, n, stage)
+	printBold(token, lexeme)
+	if lexeme == "==" or lexeme == "!=" or lexeme == ">" or lexeme == "<":
+		return expression(array, count, errors, f, n, stage)
+	else:
+		printError("== or != or > or <", token, lexeme, num)
+
 def expression(array, count, errors, f, n, stage):
-	token, lexeme = lexer(array, count, errors, f, n, stage)
-	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
+	token, lexeme = getLex(array, count, errors, f, n, stage)
+	printBold(token, lexeme)
 	if token == "identifier":
 		printRule("<Expression> ::= <Term> <Expression Prime>")
 		printRule("<Term> := <Factor> <Term Prime>")
@@ -159,8 +227,8 @@ def expression(array, count, errors, f, n, stage):
 		printError("identifier", token, lexeme, num)
 
 def expressionPrime(array, count, errors, f, n, stage):
-	token, lexeme = lexer(array, count, errors, f, n, stage)
-	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
+	token, lexeme = getLex(array, count, errors, f, n, stage)
+	printBold(token, lexeme)
 	if token == "operator" and (lexeme == "+" or lexeme == "-"):
 		printRule("<Term Prime> := ɛ")
 		printRule("<Expresion Prime> := + <Term> <Expression Prime>")
@@ -169,24 +237,29 @@ def expressionPrime(array, count, errors, f, n, stage):
 		printError("+ or -", token, lexeme, num)
 
 def term(array, count, errors, f, n, stage):
-	token, lexeme = lexer(array, count, errors, f, n, stage)
-	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
-	if token == "identifier":
+	token, lexeme = getLex(array, count, errors, f, n, stage)
+	printBold(token, lexeme)
+	if token == "integer":
+		printRule("<Term> := <Factor> <Term Prime>")
+		printRule("<Factor> := <Integer>")
+		#return termPrime(array, count, errors, f, n, stage)
+		return True
+	elif token == "identifier":
 		printRule("<Term> := <Factor> <Term Prime>")
 		printRule("<Factor> := <Identifier>")
-		return termPrime(array, count, errors, f, n, stage)
+		#return termPrime(array, count, errors, f, n, stage)
+		return True
 	else:
 		printError("identifier", token, lexeme, num)
 
 def termPrime(array, count, errors, f, n, stage):
-	token, lexeme = lexer(array, count, errors, f, n, stage)
-	printBold("Token: {0:15} Lexeme: {1}".format(token, lexeme))
+	token, lexeme = getLex(array, count, errors, f, n, stage)
+	printBold(token, lexeme)
 	if token == "separator" and lexeme == ";":
 		printRule("<Term Prime> := ɛ")
 		printRule("<Expresion Prime> := ɛ")
 	else:
 		printError(";", token, lexeme, num)
-
 	return True
 
 
