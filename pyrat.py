@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
-# version = 1.1
+# version = 1.2
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
@@ -28,19 +28,22 @@ symbols = r"[></]|[+*-]|[,;\(\){}]"
 
 # Global
 array = []
+jump = []
+table = []
 count = 0
 errors = 0
+index = 0
 num = 1
 n = 0
 stage = 0
 
 # Functions
-def printUsage():
+def print_usage():
 	print("USAGE: pyrat.py [file]")
 	print("USAGE: pyrat.py [-d|-l|-s] [file]")
 	print("USAGE: pyrat.py [--test|--rules]")
 
-def printToken(text):
+def print_token(text):
 	global logfile, stage
 	if stage == 1:
 		if logfile:
@@ -56,14 +59,14 @@ def banner():
 	elif verbose:
 		print(text)
 
-def printRule(text):
+def print_rule(text):
 	global logfile
 	if logfile:
 		log.write("  " + text + "\n")
 	elif verbose:
 		print("  " + text)
 
-def printBold(token, lexeme):
+def print_bold(token, lexeme):
 	global logfile
 	if logfile:
 		try:
@@ -74,20 +77,19 @@ def printBold(token, lexeme):
 			print("\033[1mToken: {0:15} Lexeme: {1}\033[0m".format(token, lexeme))
 		except TypeError: "blank"
 
-def printError(expected, token, lexeme):
+def print_error(expected, token, lexeme):
 	global logfile
 	if logfile:
 		try:
-			print("Syntax Error: expected {0:5} but {1:5} {2} given, line {3}\n".format(expected, token, lexeme, num))
+			print("Syntax Error: expected {0} but {1} {2} given, line {3}\n".format(expected, token, lexeme, num))
 		except TypeError: "blank"
 	else:
 		try:
-			print("\033[1;31m  Syntax Error:\033[0m expected \033[1m{0:5}\033[0m but \033[1m{1:5}\033[0m {2} given, line {3}".format(expected, token, lexeme, num))
+			print("\033[1;31m  Syntax Error:\033[0m expected \033[1m{0}\033[0m but \033[1m{1}\033[0m `{2}` given, line {3}".format(expected, token, lexeme, num))
 		except TypeError: "blank"
-	#exit(10)
-	return False
+	exit(10)
 
-def getToken(n):
+def get_token(n):
 	# State 1, 2, 3 are non-accepting states
 	if n == 1 or n == 2 or n == 3:
 		token = None
@@ -124,21 +126,17 @@ def target(n=1):
 				lexer(f, n)
 
 			elif stage == 2:
-				if checkRat("start", f):
-					while statementList(f):
-						pass
-					if checkRat("end", f):
-						try:
-							token, lexeme = getLex(f)
-							if lexeme != None:
-								printError("end of file", token, lexeme)
-						except TypeError: "EOF"
-
+				check_rat("start", f)
+				check_rat("mid", f)
+				statement(f)
+				statement(f)
+				check_rat("end", f)
+				dump_table()
 
 	except ValueError: "cannot read file"
 	f.close()
 
-def getLex(f):
+def get_lex(f):
 	token = None
 	lexeme = None
 	try:
@@ -146,162 +144,180 @@ def getLex(f):
 	except TypeError: "EOF"
 	return token, lexeme
 
-def checkRat(pos, f):
-	token, lexeme = getLex(f)
-	printBold(token, lexeme)
+def dump_table():
+	print("\n\033[1m{0} {1:10} {2}\033[0m".format("Address", "Op", "oprnd"))
+	global table
+	if len(table) > 0:
+		for row in table:
+			if row[2] != None:
+				print("{0:2}      {1:10} {2}".format(row[0], row[1], row[2]))
+
+def check_rat(pos,f):
+	token, lexeme = get_lex(f)
+	print_bold(token, lexeme)
+
 	if lexeme == "$$":
 		if pos == "start":
-			printRule("<Rat15su> ::= $$ <Opt Function Definitions> $$ <Opt Declaration List> <Statement List> $$")
-		return True
+			print_rule("<Rat15su> ::= $$ <Opt Function Definitions> $$ <Opt Declaration List> <Statement List> $$")
+	elif pos == "end":
+		print_error("end of file", token, lexeme)
 	else:
-		printError("separator", token, lexeme)
-
-def statementList(f):
-	printRule("<Statement List> ::= <Statement> <Statement List>")
-	while statement(f):
-		pass
+		print_error("$$", token, lexeme)
 
 def statement(f):
-	token, lexeme = getLex(f)
-	printBold(token, lexeme)
+	print_rule("<Statement List> ::= <Statement>")
+	token, lexeme = get_lex(f)
+	print_bold(token, lexeme)
+	token, lexeme = assign(f, token, lexeme)
+
+def assign(f, token, lexeme):
+	save = token
+	print_rule("<Statement> ::= <Assign>")
+
 	if token == "identifier":
-		return assign(f)
-	elif token == "separator" and lexeme == "{":
-		return compound(f)
-	elif token == "keyword" and lexeme == "if":
-		return ifCond(f)
-	elif token == "keyword" and lexeme == "read":
-		return readCond(f)
-	elif token == "keyword" and lexeme == "return":
-		return returnCond(f)
-	elif token == "keyword" and lexeme == "while":
-		return whileCond(f)
-	elif token == "keyword" and lexeme == "write":
-		return writeCond(f)
-	elif token == "separator" and lexeme == "}":
-		return True
-	else:
-		printError("<Statement>", token, lexeme)
-
-def assign(f):
-	printRule("<Statement> ::= <Assign>")
-	printRule("<Assign> ::= <Identifier> = <Expression>")
-	token, lexeme = getLex(f)
-	printBold(token, lexeme)
-	if token == "operator" and lexeme == "=":
-		if expression(f):
-			return termPrime(f)
-	else:
-		printError("=", token, lexeme)
-
-def compound(f):
-	printRule("<Compound> ::= { <Statement List> }")
-	return statementList(f)
-
-def ifCond(f):
-	printRule("<If> ::= if ( <Condition> ) <Statement> fi |")
-	printRule("         if ( <Condition> ) <Statement> else <Statement> fi")
-	token, lexeme = getLex(f)
-	printBold(token, lexeme)
-	if token == "separator" and lexeme == "(":
-		if conditionPrime(f):
-			if statement(f):
-				token, lexeme = getLex(f)
-				printBold(token, lexeme)
-				if token == "keyword" and lexeme == "fi":
-					return False
-				elif token == "keyword" and lexeme == "else":
-					if statement(f):
-						token, lexeme = getLex(f)
-						printBold(token, lexeme)
-						if token == "keyword" and lexeme == "fi":
-							return True
-		return True
-	else:
-		printError("(", token, lexeme)
-
-def conditionPrime(f):
-	if condition(f):
-		token, lexeme = getLex(f)
-		printBold(token, lexeme)
-		if token == "separator" and lexeme == ")":
-			return False
+		print_rule("<Assign> ::= <Identifier> = <Expression>")
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+		if lexeme == "=":
+			token, lexeme = get_lex(f)
+			print_bold(token, lexeme)
+			token, lexeme = express(f, token, lexeme)
+			print_rule("<Expression Prime> := ɛ")
+			addr = get_address(save)
+			gen_instr("POPM", addr)
 		else:
-			printError(")", token, lexeme)
-
-def condition(f):
-	printRule("<Condition> ::= <Expression> <Relop> <Expression>")
-	if expression(f):
-		if relop(f):
-			return True
-	return False
-
-def readCond(f):
-	return
-
-def returnCond(f):
-	return
-
-def whileCond(f):
-	return
-
-def writeCond(f):
-	return
-
-def relop(f):
-	token, lexeme = getLex(f)
-	printBold(token, lexeme)
-	if lexeme == "==" or lexeme == "!=" or lexeme == ">" or lexeme == "<":
-		return expression(f)
+			print_error("=", token, lexeme)
 	else:
-		printError("== or != or > or <", token, lexeme)
+		print_error("identifier", token, lexeme)
 
-def expression(f):
-	token, lexeme = getLex(f)
-	printBold(token, lexeme)
+	return token, lexeme
+
+
+def express(f, token, lexeme):
+	print_rule("<Expression> := <Term> <Expression Prime>")
+	token, lexeme = term(f, token, lexeme)
+	token, lexeme = eprime(f, token, lexeme)
+	return token, lexeme
+
+def eprime(f, token, lexeme):
+	print_rule("<Term Prime> := ɛ")
+	if lexeme == "+":
+		print_rule("<Expression Prime> := + <Term> <Expression Prime>")
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+		token, lexeme = term(f, token, lexeme)
+		gen_instr("ADD", None)
+		token, lexeme = eprime(f, token, lexeme)
+	elif lexeme == "-":
+		print_rule("<Expression Prime> := - <Term> <Expression Prime>")
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+		token, lexeme = term(f, token, lexeme)
+		gen_instr("SUB", None)
+		token, lexeme = eprime(f, token, lexeme)
+	return token, lexeme
+
+
+def term(f, token, lexeme):
+	print_rule("<Term> := <Factor> <Term Prime>")
+	token, lexeme = factor(f, token, lexeme)
+	token, lexeme = tprime(f, token, lexeme)
+	return token, lexeme
+
+
+def tprime(f, token, lexeme):
+	if lexeme == "*":
+		print_rule("<Term Prime> := * <Factor>")
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+		gen_instr("MUL", None)
+		token, lexeme = tprime(f, token, lexeme)
+	elif lexeme == "/":
+		print_rule("<Term Prime> := / <Factor>")
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+		gen_instr("DIV", None)
+		token, lexeme = tprime(f, token, lexeme)
+	return token, lexeme
+
+
+def factor(f, token, lexeme):
 	if token == "identifier":
-		printRule("<Expression> ::= <Term> <Expression Prime>")
-		printRule("<Term> := <Factor> <Term Prime>")
-		printRule("<Factor> := <Identifier>")
-		return expressionPrime(f)
+		print_rule("<Factor> := <Identifier>")
+		addr = get_address(token)
+		gen_instr("PUSHM", addr)
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
 	else:
-		printError("identifier", token, lexeme)
+		print_error("identifier", token, lexeme)
+	return token, lexeme
 
-def expressionPrime(f):
-	token, lexeme = getLex(f)
-	printBold(token, lexeme)
-	if token == "operator" and (lexeme == "+" or lexeme == "-"):
-		printRule("<Term Prime> := ɛ")
-		printRule("<Expresion Prime> := + <Term> <Expression Prime>")
-		return term(f)
+def while_loop(f, token, lexeme):
+	if lexeme == "while":
+		global index
+		addr = index
+		gen_instr("LABEL", None)
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+		if lexeme == "(":
+			token, lexeme = get_lex(f)
+			print_bold(token, lexeme)
+			token, lexeme = condition(f, token, lexeme)
+			if lexeme == ")":
+				token, lexeme = get_lex(f)
+				print_bold(token, lexeme)
+				token, lexeme = statement(f, token, lexeme)
+				gen_instr("JUMP", addr)
+				back_patch(index)
+			else:
+				print_error(")", token, lexeme)
+		else:
+			print_error("(", token, lexeme)
 	else:
-		printError("+ or -", token, lexeme)
+		print_error("while", token, lexeme)
 
-def term(f):
-	token, lexeme = getLex(f)
-	printBold(token, lexeme)
-	if token == "integer":
-		printRule("<Term> := <Factor> <Term Prime>")
-		printRule("<Factor> := <Integer>")
-		#return termPrime(f)
-		return True
-	elif token == "identifier":
-		printRule("<Term> := <Factor> <Term Prime>")
-		printRule("<Factor> := <Identifier>")
-		#return termPrime(f)
-		return True
-	else:
-		printError("identifier", token, lexeme)
+def back_patch(jump_addr):
+	addr = jump.pop()
+	t1, t2, t3 = table[addr]
+	table.insert(addr, (t1, t2, jump_addr))
 
-def termPrime(f):
-	token, lexeme = getLex(f)
-	printBold(token, lexeme)
-	if token == "separator" and lexeme == ";":
-		printRule("<Term Prime> := ɛ")
-		printRule("<Expresion Prime> := ɛ")
+def condition(f, token, lexeme):
+	token, lexeme = express(f, token, lexeme)
+	if lexeme == "==" or lexeme == "!=" or lexeme == ">" or lexeme == "<":
+		global index
+		op = lexeme
+		token, lexeme = express(f, token, lexeme)
+		if op == "<":
+			gen_instr("LES", None)
+			jump.append(index)
+			gen_instr("JUMPZ", None)
+		elif op == ">":
+			gen_instr("GRT", None)
+			jump.append(index)
+			gen_instr("JUMPZ", None)
+		elif op == "==":
+			gen_instr("EQU", None)
+			jump.append(index)
+			gen_instr("JUMPZ", None)
+		elif op == "!=":
+			gen_instr("NEQ", None)
+			jump.append(index)
+			gen_instr("JUMPZ", None)
+		else:
+			print_error("unknown state", token, lexeme)
 	else:
-		printError(";", token, lexeme)
-	return True
+		print_error("<, >, ==, !=", token, lexeme)
+
+
+def gen_instr(op, oprnd):
+	global index
+	table.insert(index, (index, op, oprnd))
+	index += 1
+
+
+def get_address(token):
+	return 5000
+
 
 
 def lexer(f, n=0):
@@ -334,7 +350,7 @@ def lexer(f, n=0):
 			elif debug:
 				print("{0:2} {1:4} {2:15} {3:10} {4:10} {5}".format(num, "", token, lexeme, "stack: ", array))
 			else:
-				printToken("{0:15} {1}".format(token, lexeme))
+				print_token("{0:15} {1}".format(token, lexeme))
 
 	if errors > 0:
 		print("ARRRR: Unit test", n, "failed")
@@ -453,7 +469,7 @@ def fsm(f, char):
 		if debug and not char.isspace():
 			print("{0:2} {1:4} {2:15} {3:10} {4:10} {5}".format("", "=> ", char, "", "stack: ", array))
 
-	token = getToken(state)
+	token = get_token(state)
 
 	return token, lexeme
 
@@ -592,12 +608,12 @@ if len(sys.argv) == 3:
 elif len(sys.argv) == 2:
 	filename = sys.argv[1]
 else:
-	printUsage()
+	print_usage()
 	exit(1)
 
 # Check file exists
 if re.match(r"\-t|\-r|\-\-test|\-\-rules", option) and len(sys.argv) > 2:
-	printUsage()
+	print_usage()
 	exit(1)
 
 if filename == "--test" or filename == "-t":
@@ -607,7 +623,7 @@ elif filename == "--test2" or filename == "-tt":
 	filename = temp
 	option = "--test2"
 elif filename == "-h" or filename == "--help":
-	printUsage()
+	print_usage()
 	exit(1)
 elif not os.path.isfile(filename):
 	print("ARRRR: Argument must be a valid file name")
