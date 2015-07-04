@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
-# version = 1.2
+# version = 1.3
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
@@ -30,12 +30,15 @@ symbols = r"[></]|[+*-]|[,;\(\){}]"
 array = []
 jump = []
 table = []
+known = []
+ids = []
 count = 0
 errors = 0
 index = 0
 num = 1
 n = 0
 stage = 0
+pos = 0
 
 # Functions
 def print_usage():
@@ -58,6 +61,13 @@ def banner():
 		log.write(text + "\n")
 	elif verbose:
 		print(text)
+
+def print_row(col1, col2, col3):
+	global logfile
+	if logfile:
+		log.write("{0:3}      {1:15}   {2}\n".format(col1, col2, col3))
+	else:
+		print("{0:3}      {1:15}   {2}".format(col1, col2, col3))
 
 def print_rule(text):
 	global logfile
@@ -87,7 +97,15 @@ def print_error(expected, token, lexeme):
 		try:
 			print("\033[1;31m  Syntax Error:\033[0m expected \033[1m{0}\033[0m but \033[1m{1}\033[0m `{2}` given, line {3}".format(expected, token, lexeme, num))
 		except TypeError: "blank"
-	exit(10)
+	dump_exit(10)
+
+def print_exit(text):
+	global logfile
+	if logfile:
+		print("Syntax Error: {0}, line {3}\n".format(text, num))
+	else:
+		print("\033[1;31m  Syntax Error:\033[0m \033[1m{0}\033[0m, line {3}".format(text, num))
+	dump_exit(11)
 
 def get_token(n):
 	# State 1, 2, 3 are non-accepting states
@@ -126,12 +144,46 @@ def target(n=1):
 				lexer(f, n)
 
 			elif stage == 2:
-				check_rat("start", f)
-				check_rat("mid", f)
-				statement(f)
-				statement(f)
-				check_rat("end", f)
-				dump_table()
+				# <Rat15su>
+				token, lexeme = get_lex(f)
+				print_bold(token, lexeme)
+				# <Opt Function Definitions>
+				token, lexeme = get_lex(f)
+				print_bold(token, lexeme)
+				# <Opt Declaration List> <Statement List>
+				token, lexeme = statement_list(f, token, lexeme)
+				# End
+				token, lexeme = get_lex(f)
+				print_bold(token, lexeme)
+
+			elif stage == 3:
+				# <Rat15su>
+				token, lexeme = get_lex(f)
+				print_bold(token, lexeme)
+				# <Opt Function Definitions>
+				token, lexeme = get_lex(f)
+				print_bold(token, lexeme)
+				# <Opt Declaration List> <Statement List>
+				token, lexeme = statement_list(f, token, lexeme)
+				# End
+				token, lexeme = get_lex(f)
+				print_bold(token, lexeme)
+
+				# Output
+				if not logfile:
+					if verbose:
+						banner()
+
+					print("\033[1m{0}    {1:10} {2}\033[0m".format("Address", "Op\t", "  oprnd"))
+					dump_table()
+					print("\n\033[1m{0} {1:10} {2}\033[0m".format("Identifier", "MemoryLocation", "Type"))
+					dump_symbols()
+				else:
+					banner()
+					log.write("{0} {1:10} {2}\n".format("Address", "  Op\t", "  oprnd"))
+					dump_table()
+					log.write("\n{0} {1:10} {2}\n".format("Identifier", "MemoryLocation", "Type"))
+					dump_symbols()
 
 	except ValueError: "cannot read file"
 	f.close()
@@ -142,36 +194,98 @@ def get_lex(f):
 	try:
 		token, lexeme = lexer(f)
 	except TypeError: "EOF"
+
+	if lexeme == None:
+		if pos < 3:
+			print_exit("unexpected EOF")
+		elif pos > 3:
+			print_exit("end of file")
+	if lexeme == "$$":
+		checkrat(f, token, lexeme)
+
 	return token, lexeme
 
+def checkrat(f, token, lexeme):
+	global pos
+	if pos == 0:
+		print_rule("<Rat15su> ::= $$ <Opt Function Definitions> $$ <Opt Declaration List> <Statement List> $$")
+		pos += 1
+	elif pos > 2:
+		print_error("end of file", token, lexeme)
+	else:
+		pos += 1
+
+
+def gen_instr(op, oprnd):
+	global index
+	table.insert(index, (index, op, oprnd))
+	index += 1
+
+
+def get_address(token, lexeme):
+	if lexeme in known:
+		return 5000 + known.index(lexeme)
+	else:
+		if token == "identifier":
+			ids.append(lexeme)
+		known.append(lexeme)
+		return 5000 + len(known) - 1
+
+def dump_exit(n):
+	global stage
+	if stage > 2:
+		dump_table()
+		dump_symbols()
+	exit(n)
+
 def dump_table():
-	print("\n\033[1m{0} {1:10} {2}\033[0m".format("Address", "Op", "oprnd"))
 	global table
 	if len(table) > 0:
 		for row in table:
-			if row[2] != None:
-				print("{0:2}      {1:10} {2}".format(row[0], row[1], row[2]))
+			print_row(row[0], row[1], row[2])
 
-def check_rat(pos,f):
+def dump_symbols():
+	global ids
+	for s in range(0, len(ids)):
+		print_row(ids[s], 5000+s, "integer")
+		#print("{0:5} {1:10}\t  {2}".format(ids[s], 5000+s, "integer"))
+
+def statement_list(f, token, lexeme):
 	token, lexeme = get_lex(f)
 	print_bold(token, lexeme)
 
-	if lexeme == "$$":
-		if pos == "start":
-			print_rule("<Rat15su> ::= $$ <Opt Function Definitions> $$ <Opt Declaration List> <Statement List> $$")
-	elif pos == "end":
-		print_error("end of file", token, lexeme)
-	else:
-		print_error("$$", token, lexeme)
+	if lexeme != "}" and lexeme != None:
+		token, lexeme = statement(f, token, lexeme)
+		token, lexeme = statement_list(f, token, lexeme)
+	return token, lexeme
 
-def statement(f):
+def statement(f, token, lexeme):
 	print_rule("<Statement List> ::= <Statement>")
-	token, lexeme = get_lex(f)
-	print_bold(token, lexeme)
-	token, lexeme = assign(f, token, lexeme)
+	if token == "identifier":
+		token, lexeme = assign(f, token, lexeme)
+	elif lexeme == "if":
+		token, lexeme = if_state(f, token, lexeme)
+	elif lexeme == "while":
+		token, lexeme = while_loop(f, token, lexeme)
+	elif lexeme == "{":
+		token, lexeme = compound(f, token, lexeme)
+	else:
+		print_error("<Statement>", token, lexeme)
+
+	return token, lexeme
+
+def compound(f, token, lexeme):
+	token, lexeme = statement_list(f, token, lexeme)
+	if lexeme == "}":
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+	else:
+		print_error("}", token, lexeme)
+	return token, lexeme
 
 def assign(f, token, lexeme):
-	save = token
+	save = lexeme
+	saveType = token
 	print_rule("<Statement> ::= <Assign>")
 
 	if token == "identifier":
@@ -183,7 +297,7 @@ def assign(f, token, lexeme):
 			print_bold(token, lexeme)
 			token, lexeme = express(f, token, lexeme)
 			print_rule("<Expression Prime> := ɛ")
-			addr = get_address(save)
+			addr = get_address(saveType, save)
 			gen_instr("POPM", addr)
 		else:
 			print_error("=", token, lexeme)
@@ -244,12 +358,18 @@ def tprime(f, token, lexeme):
 def factor(f, token, lexeme):
 	if token == "identifier":
 		print_rule("<Factor> := <Identifier>")
-		addr = get_address(token)
+		addr = get_address(token, lexeme)
+		gen_instr("PUSHM", addr)
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+	elif token == "integer":
+		print_rule("<Factor> := <Integer>")
+		addr = get_address(token, lexeme)
 		gen_instr("PUSHM", addr)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
 	else:
-		print_error("identifier", token, lexeme)
+		print_error("identifier or integer", token, lexeme)
 	return token, lexeme
 
 def while_loop(f, token, lexeme):
@@ -275,6 +395,7 @@ def while_loop(f, token, lexeme):
 			print_error("(", token, lexeme)
 	else:
 		print_error("while", token, lexeme)
+	return token, lexeme
 
 def back_patch(jump_addr):
 	addr = jump.pop()
@@ -286,7 +407,10 @@ def condition(f, token, lexeme):
 	if lexeme == "==" or lexeme == "!=" or lexeme == ">" or lexeme == "<":
 		global index
 		op = lexeme
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
 		token, lexeme = express(f, token, lexeme)
+
 		if op == "<":
 			gen_instr("LES", None)
 			jump.append(index)
@@ -307,18 +431,30 @@ def condition(f, token, lexeme):
 			print_error("unknown state", token, lexeme)
 	else:
 		print_error("<, >, ==, !=", token, lexeme)
+	return token, lexeme
 
-
-def gen_instr(op, oprnd):
-	global index
-	table.insert(index, (index, op, oprnd))
-	index += 1
-
-
-def get_address(token):
-	return 5000
-
-
+def if_case(f, token, lexeme):
+	if lexme == "(":
+		addr = index
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+		token, lexeme = condition(f, token, lexeme)
+		if lexeme == ")":
+			token, lexeme = get_lex(f)
+			print_bold(token, lexeme)
+			token, lexeme = statement(f, token, lexeme)
+			back_patch(index)
+			if lexeme == "fi":
+				token, lexeme = get_lex(f)
+				print_bold(token, lexeme)
+			else:
+				print_error("fi", token, lexeme)
+		else:
+			print_error(")", token, lexeme)
+	else:
+		print_error("if", token, lexeme)
+	return token, lexeme
+		
 
 def lexer(f, n=0):
 	global array, count, errors, num, stage
@@ -641,10 +777,20 @@ if option == "all":
 	stage = 1
 	target()
 	banner()
-	print("==> running syntaxer")
-	stage = 2
+	print("==> running compiler")
+	stage = 3
 	target()
 	print("==> saved to " + output)
+elif option == "--":
+	logfile = False
+	verbose = True
+	print("==> running lexer")
+	stage = 1
+	target()
+	banner()
+	print("==> running compiler")
+	stage = 3
+	target()
 elif option == "--debug" or option == "-d":
 	debug = True
 	stage = 1
@@ -658,6 +804,11 @@ elif option == "--syntaxer" or option == "-s":
 	logfile = False
 	verbose = True
 	stage = 2
+	target()
+elif option == "--assembly" or option == "-a":
+	logfile = False
+	verbose = False
+	stage = 3
 	target()
 elif option == "--test" or option == "-t":
 	test = True
