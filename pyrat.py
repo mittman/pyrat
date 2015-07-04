@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
-# version = 1.4
+# version = 1.5
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
@@ -265,57 +265,56 @@ def declaration_list(f, token, lexeme):
 	print_rule("<Declaration List> ::= <Declaration>;")
 	token, lexeme = get_lex(f)
 	print_bold(token, lexeme)
-	token, lexeme, declared = declaration(f, token, lexeme)
-
-	if lexeme != ";" and declared == True:
-		print_error(";", token, lexeme)
-	else:
-		token, lexeme = get_lex(f)
-		print_bold(token, lexeme)
-	return token, lexeme, declared
+	token, lexeme = declaration(f, token, lexeme)
+	if lexeme == ";":
+		return token, lexeme, False
+	return token, lexeme, True
 
 def declaration(f, token, lexeme):
-	declared = True
-
 	if lexeme == "integer":
+		print_rule("<Declaration> ::= integer")
 		gen_instr("PUSHI", 0)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
-		token, lexeme, declared = dprime(f, token, lexeme, "integer")
+		token, lexeme = dprime(f, token, lexeme, "integer")
+		if lexeme != ";":
+			print_error(";", token, lexeme)
 	elif lexeme == "boolean":
+		print_rule("<Declaration> ::= boolean")
 		gen_instr("PUSHI", 0)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
-		token, lexeme, declared = dprime(f, token, lexeme, "boolean")
+		token, lexeme = dprime(f, token, lexeme, "boolean")
+		if lexeme != ";":
+			print_error(";", token, lexeme)
 	elif lexeme == "real":
+		print_rule("<Declaration> ::= real")
 		gen_instr("PUSHI", 0)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
-		token, lexeme, declared = dprime(f, token, lexeme, "real")
+		token, lexeme = dprime(f, token, lexeme, "real")
+		if lexeme != ";":
+			print_error(";", token, lexeme)
 
-	return token, lexeme, declared
+	return token, lexeme
 
 def dprime(f, token, lexeme, qualifier):
-	declared = True
-
 	if token == "identifier":
-		print_rule("<Declaration> ::= " + qualifier)
+		print_rule("<Qualifier> ::= " + qualifier)
 		get_address(token, lexeme)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
-
 		if lexeme == ",":
 			token, lexeme = get_lex(f)
 			print_bold(token, lexeme)
-			token, lexeme, declared = dprime(f, token, lexeme, qualifier)
-		else:
-			return token, lexeme, False
-	return token, lexeme, declared
+			token, lexeme = dprime(f, token, lexeme, qualifier)
 
-def statement_list(f, token, lexeme, new=True):
+	return token, lexeme
+
+def statement_list(f, token, lexeme, declared=False):
 	print_rule("<Statement List> ::= <Statement>")
 
-	if new:
+	if not declared:
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
 
@@ -524,9 +523,10 @@ def if_state(f, token, lexeme):
 			token, lexeme = statement(f, token, lexeme)
 			if lexeme != ";":
 				print_error(";", token, lexeme)
-			back_patch(index)
 			token, lexeme = get_lex(f)
 			print_bold(token, lexeme)
+			token, lexeme = else_state(f, token, lexeme)
+			back_patch(index)
 			if lexeme == "fi":
 				token, lexeme = get_lex(f)
 				print_bold(token, lexeme)
@@ -536,6 +536,19 @@ def if_state(f, token, lexeme):
 			print_error(")", token, lexeme)
 	else:
 		print_error("(", token, lexeme)
+	return token, lexeme
+
+def else_state(f, token, lexeme):
+	if lexeme == "else":
+		print_rule("<Statement> ::= <Else>")
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+		token, lexeme = statement(f, token, lexeme)
+		if lexeme != ";":
+			print_error(";", token, lexeme)
+		else:
+			token, lexeme = get_lex(f)
+			print_bold(token, lexeme)
 	return token, lexeme
 
 def id_list(f, token, lexeme):
