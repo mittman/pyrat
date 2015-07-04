@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
-# version = 1.3
+# version = 1.4
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
@@ -39,11 +39,13 @@ num = 1
 n = 0
 stage = 0
 pos = 0
+save = None
+saveType = None
 
 # Functions
 def print_usage():
 	print("USAGE: pyrat.py [file]")
-	print("USAGE: pyrat.py [-d|-l|-s] [file]")
+	print("USAGE: pyrat.py [--|-d|-l|-s] [file]")
 	print("USAGE: pyrat.py [--test|--rules]")
 
 def print_token(text):
@@ -357,8 +359,10 @@ def compound(f, token, lexeme):
 	return token, lexeme
 
 def assign(f, token, lexeme):
+	global save, saveType
 	save = lexeme
 	saveType = token
+	addr = get_address(saveType, save)
 	print_rule("<Statement> ::= <Assign>")
 
 	if token == "identifier":
@@ -429,6 +433,7 @@ def tprime(f, token, lexeme):
 
 
 def factor(f, token, lexeme):
+	global saveType, save
 	if token == "identifier":
 		print_rule("<Factor> := <Identifier>")
 		addr = get_address(token, lexeme)
@@ -437,7 +442,7 @@ def factor(f, token, lexeme):
 		print_bold(token, lexeme)
 	elif token == "integer":
 		print_rule("<Factor> := <Integer>")
-		addr = get_address(token, lexeme)
+		addr = get_address(saveType, save)
 		gen_instr("PUSHM", addr)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
@@ -471,7 +476,7 @@ def while_loop(f, token, lexeme):
 def back_patch(jump_addr):
 	addr = jump.pop()
 	t1, t2, t3 = table[addr]
-	table.insert(addr, (t1, t2, jump_addr))
+	table[addr] = (t1, t2, jump_addr)
 
 def condition(f, token, lexeme):
 	token, lexeme = express(f, token, lexeme)
@@ -504,7 +509,7 @@ def condition(f, token, lexeme):
 		print_error("<, >, ==, !=", token, lexeme)
 	return token, lexeme
 
-def if_case(f, token, lexeme):
+def if_state(f, token, lexeme):
 	token, lexeme = get_lex(f)
 	print_bold(token, lexeme)
 	if lexeme == "(":
@@ -516,7 +521,11 @@ def if_case(f, token, lexeme):
 			token, lexeme = get_lex(f)
 			print_bold(token, lexeme)
 			token, lexeme = statement(f, token, lexeme)
+			if lexeme != ";":
+				print_error(";", token, lexeme)
 			back_patch(index)
+			token, lexeme = get_lex(f)
+			print_bold(token, lexeme)
 			if lexeme == "fi":
 				token, lexeme = get_lex(f)
 				print_bold(token, lexeme)
