@@ -151,7 +151,7 @@ def target(n=1):
 				token, lexeme = get_lex(f)
 				print_bold(token, lexeme)
 				# <Opt Declaration List> <Statement List>
-				token, lexeme = statement_list(f, token, lexeme)
+				token, lexeme = opt_dec_list(f, token, lexeme)
 				# End
 				token, lexeme = get_lex(f)
 				print_bold(token, lexeme)
@@ -251,7 +251,6 @@ def dump_symbols():
 	global ids
 	for s in range(0, len(ids)):
 		print_row(ids[s], 5000+s, "integer")
-		#print("{0:5} {1:10}\t  {2}".format(ids[s], 5000+s, "integer"))
 
 def opt_dec_list(f, token, lexeme):
 	print_rule("<Opt Declaration List> ::= <Declaration List>")
@@ -260,28 +259,55 @@ def opt_dec_list(f, token, lexeme):
 	return token, lexeme
 
 def declaration_list(f, token, lexeme):
-	print_rule("<Declaration List> ::= <Declaration>")
+	print_rule("<Declaration List> ::= <Declaration>;")
 	token, lexeme = get_lex(f)
 	print_bold(token, lexeme)
 	token, lexeme, declared = declaration(f, token, lexeme)
+
+	if lexeme != ";" and declared == True:
+		print_error(";", token, lexeme)
+	else:
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
 	return token, lexeme, declared
 
 def declaration(f, token, lexeme):
+	declared = True
+
 	if lexeme == "integer":
-		print_rule("<Declaration> ::= integer")
-		#token, lexeme = get_lex(f)
-		#print_bold(token, lexeme)
+		gen_instr("PUSHI", 0)
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+		token, lexeme, declared = dprime(f, token, lexeme, "integer")
 	elif lexeme == "boolean":
-		print_rule("<Declaration> ::= boolean")
-		#token, lexeme = get_lex(f)
-		#print_bold(token, lexeme)
+		gen_instr("PUSHI", 0)
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+		token, lexeme, declared = dprime(f, token, lexeme, "boolean")
 	elif lexeme == "real":
-		print_rule("<Declaration> ::= real")
-		#token, lexeme = get_lex(f)
-		#print_bold(token, lexeme)
-	else:
-		return token, lexeme, False
-	return token, lexeme, True
+		gen_instr("PUSHI", 0)
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+		token, lexeme, declared = dprime(f, token, lexeme, "real")
+
+	return token, lexeme, declared
+
+def dprime(f, token, lexeme, qualifier):
+	declared = True
+
+	if token == "identifier":
+		print_rule("<Declaration> ::= " + qualifier)
+		get_address(token, lexeme)
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+
+		if lexeme == ",":
+			token, lexeme = get_lex(f)
+			print_bold(token, lexeme)
+			token, lexeme, declared = dprime(f, token, lexeme, qualifier)
+		else:
+			return token, lexeme, False
+	return token, lexeme, declared
 
 def statement_list(f, token, lexeme, new=True):
 	print_rule("<Statement List> ::= <Statement>")
@@ -292,22 +318,35 @@ def statement_list(f, token, lexeme, new=True):
 
 	if lexeme != "}" and lexeme != None:
 		token, lexeme = statement(f, token, lexeme)
-		token, lexeme = statement_list(f, token, lexeme)
+		if lexeme != "$$":
+			token, lexeme = statement_list(f, token, lexeme)
 	return token, lexeme
 
 def statement(f, token, lexeme):
 	if token == "identifier":
 		print_rule("<Statement> ::= <Assign>")
 		token, lexeme = assign(f, token, lexeme)
+		if lexeme != ";":
+			print_error(";", token, lexeme)
 	elif lexeme == "if":
 		print_rule("<Statement> ::= <If>")
 		token, lexeme = if_state(f, token, lexeme)
 	elif lexeme == "while":
 		print_rule("<Statement> ::= <While>")
 		token, lexeme = while_loop(f, token, lexeme)
+	elif lexeme == "read":
+		print_rule("<Statement> ::= <Read>")
+		token, lexeme = read_state(f, token, lexeme)
+	elif lexeme == "write":
+		print_rule("<Statement> ::= <Write>")
+		token, lexeme = write_state(f, token, lexeme)
 	elif lexeme == "{":
 		print_rule("<Statement> ::= <Compound>")
 		token, lexeme = compound(f, token, lexeme)
+		if lexeme != "}":
+			print_error("}", token, lexeme)
+	elif lexeme == "$$":
+		pass
 	else:
 		print_error("<Statement>", token, lexeme)
 
@@ -315,11 +354,6 @@ def statement(f, token, lexeme):
 
 def compound(f, token, lexeme):
 	token, lexeme = statement_list(f, token, lexeme)
-	if lexeme == "}":
-		token, lexeme = get_lex(f)
-		print_bold(token, lexeme)
-	else:
-		print_error("}", token, lexeme)
 	return token, lexeme
 
 def assign(f, token, lexeme):
@@ -412,28 +446,26 @@ def factor(f, token, lexeme):
 	return token, lexeme
 
 def while_loop(f, token, lexeme):
-	if lexeme == "while":
-		global index
-		addr = index
-		gen_instr("LABEL", None)
+	global index
+	addr = index
+	gen_instr("LABEL", None)
+	token, lexeme = get_lex(f)
+	print_bold(token, lexeme)
+	if lexeme == "(":
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
-		if lexeme == "(":
+		token, lexeme = condition(f, token, lexeme)
+		if lexeme == ")":
 			token, lexeme = get_lex(f)
 			print_bold(token, lexeme)
-			token, lexeme = condition(f, token, lexeme)
-			if lexeme == ")":
-				token, lexeme = get_lex(f)
-				print_bold(token, lexeme)
-				token, lexeme = statement(f, token, lexeme)
-				gen_instr("JUMP", addr)
-				back_patch(index)
-			else:
-				print_error(")", token, lexeme)
+			token, lexeme = statement(f, token, lexeme)
+			gen_instr("JUMP", addr)
+			back_patch(index)
 		else:
-			print_error("(", token, lexeme)
+			print_error(")", token, lexeme)
 	else:
-		print_error("while", token, lexeme)
+		print_error("(", token, lexeme)
+
 	return token, lexeme
 
 def back_patch(jump_addr):
@@ -473,7 +505,9 @@ def condition(f, token, lexeme):
 	return token, lexeme
 
 def if_case(f, token, lexeme):
-	if lexme == "(":
+	token, lexeme = get_lex(f)
+	print_bold(token, lexeme)
+	if lexeme == "(":
 		addr = index
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
@@ -491,9 +525,61 @@ def if_case(f, token, lexeme):
 		else:
 			print_error(")", token, lexeme)
 	else:
-		print_error("if", token, lexeme)
+		print_error("(", token, lexeme)
 	return token, lexeme
-		
+
+def id_list(f, token, lexeme):
+	if token == "identifier":
+		get_address(token, lexeme)
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+
+		if lexeme == ",":
+			token, lexeme = get_lex(f)
+			print_bold(token, lexeme)
+			token, lexeme = id_list(f, token, lexeme)
+		else:
+			return token, lexeme
+	return token, lexeme
+
+def read_state(f, token, lexeme):
+	print_rule("<Read> ::= read ( <IDs> );")
+	token, lexeme = get_lex(f)
+	print_bold(token, lexeme)
+	if lexeme == "(":
+		print_rule("<IDs> ::= <Identifier>")
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+		token, lexeme = id_list(f, token, lexeme)
+		if lexeme == ")":
+			token, lexeme = get_lex(f)
+			print_bold(token, lexeme)
+			if lexeme != ";":
+				print_error(";", token, lexeme)
+		else:
+			print_error(")", token, lexeme)
+	else:
+		print_error("(", token, lexeme)
+	return token, lexeme
+
+def write_state(f, token, lexeme):
+	token, lexeme = get_lex(f)
+	print_bold(token, lexeme)
+	if lexeme == "(":
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
+		token, lexeme = express(f, token, lexeme)
+		if lexeme == ")":
+			token, lexeme = get_lex(f)
+			print_bold(token, lexeme)
+			if lexeme != ";":
+				print_error(";", token, lexeme)
+		else:
+			print_error(")", token, lexeme)
+	else:
+		print_error("(", token, lexeme)
+	return token, lexeme
+
 
 def lexer(f, n=0):
 	global array, count, errors, num, stage
