@@ -62,7 +62,7 @@ def banner():
 	elif verbose:
 		print(text)
 
-def print_row(col1, col2, col3):
+def print_row(col1, col2, col3=""):
 	global logfile
 	if logfile:
 		log.write("{0:3}      {1:15}   {2}\n".format(col1, col2, col3))
@@ -164,7 +164,7 @@ def target(n=1):
 				token, lexeme = get_lex(f)
 				print_bold(token, lexeme)
 				# <Opt Declaration List> <Statement List>
-				token, lexeme = statement_list(f, token, lexeme)
+				token, lexeme = opt_dec_list(f, token, lexeme)
 				# End
 				token, lexeme = get_lex(f)
 				print_bold(token, lexeme)
@@ -242,7 +242,10 @@ def dump_table():
 	global table
 	if len(table) > 0:
 		for row in table:
-			print_row(row[0], row[1], row[2])
+			if row[2] == None:
+				print_row(row[0], row[1])
+			else:
+				print_row(row[0], row[1], row[2])
 
 def dump_symbols():
 	global ids
@@ -250,9 +253,42 @@ def dump_symbols():
 		print_row(ids[s], 5000+s, "integer")
 		#print("{0:5} {1:10}\t  {2}".format(ids[s], 5000+s, "integer"))
 
-def statement_list(f, token, lexeme):
+def opt_dec_list(f, token, lexeme):
+	print_rule("<Opt Declaration List> ::= <Declaration List>")
+	token, lexeme, declared = declaration_list(f, token, lexeme)
+	token, lexeme = statement_list(f, token, lexeme, declared)	
+	return token, lexeme
+
+def declaration_list(f, token, lexeme):
+	print_rule("<Declaration List> ::= <Declaration>")
 	token, lexeme = get_lex(f)
 	print_bold(token, lexeme)
+	token, lexeme, declared = declaration(f, token, lexeme)
+	return token, lexeme, declared
+
+def declaration(f, token, lexeme):
+	if lexeme == "integer":
+		print_rule("<Declaration> ::= integer")
+		#token, lexeme = get_lex(f)
+		#print_bold(token, lexeme)
+	elif lexeme == "boolean":
+		print_rule("<Declaration> ::= boolean")
+		#token, lexeme = get_lex(f)
+		#print_bold(token, lexeme)
+	elif lexeme == "real":
+		print_rule("<Declaration> ::= real")
+		#token, lexeme = get_lex(f)
+		#print_bold(token, lexeme)
+	else:
+		return token, lexeme, False
+	return token, lexeme, True
+
+def statement_list(f, token, lexeme, new=True):
+	print_rule("<Statement List> ::= <Statement>")
+
+	if new:
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
 
 	if lexeme != "}" and lexeme != None:
 		token, lexeme = statement(f, token, lexeme)
@@ -260,14 +296,17 @@ def statement_list(f, token, lexeme):
 	return token, lexeme
 
 def statement(f, token, lexeme):
-	print_rule("<Statement List> ::= <Statement>")
 	if token == "identifier":
+		print_rule("<Statement> ::= <Assign>")
 		token, lexeme = assign(f, token, lexeme)
 	elif lexeme == "if":
+		print_rule("<Statement> ::= <If>")
 		token, lexeme = if_state(f, token, lexeme)
 	elif lexeme == "while":
+		print_rule("<Statement> ::= <While>")
 		token, lexeme = while_loop(f, token, lexeme)
 	elif lexeme == "{":
+		print_rule("<Statement> ::= <Compound>")
 		token, lexeme = compound(f, token, lexeme)
 	else:
 		print_error("<Statement>", token, lexeme)
