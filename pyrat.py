@@ -45,7 +45,8 @@ saveType = None
 # Functions
 def print_usage():
 	print("USAGE: pyrat.py [file]")
-	print("USAGE: pyrat.py [--|-d|-l|-s] [file]")
+	print("USAGE: pyrat.py [--|-a|-l|-s] [file]")
+	print("USAGE: pyrat.py [--debug] [file]")
 	print("USAGE: pyrat.py [--test|--rules]")
 
 def print_token(text):
