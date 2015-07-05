@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
-# version = 1.5
+# version = 1.6
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
@@ -14,6 +14,8 @@ temp = "pyrat.tmp"
 # Flags
 debug = False
 test = False
+rules = False
+memory = False
 logfile = True
 verbose = False
 
@@ -33,11 +35,13 @@ table = []
 known = []
 ids = []
 count = 0
+icount = 0
 errors = 0
-index = 0
+index = 1
 num = 1
 n = 0
 stage = 0
+unit = 0
 pos = 0
 save = None
 saveType = None
@@ -66,15 +70,31 @@ def banner():
 		print(text)
 
 def print_row(col1, col2, col3=""):
-	global logfile
-	if logfile:
+	global count, errors, logfile, memory, unit
+	if memory:
+		errors = compare_asm(count, col1, col2, col3, unit)
+		count += 1
+	elif logfile:
+		log.write("{0:3}      {1:15}   {2}\n".format(col1, col2, col3))
+	else:
+		print("{0:3}      {1:15}   {2}".format(col1, col2, col3))
+
+def print_legend(col1, col2, col3=""):
+	global icount, errors, logfile, memory, unit
+	if memory:
+		errors = compare_mem(icount, col1, col2, col3, unit)
+		icount += 1
+	elif logfile:
 		log.write("{0:3}      {1:15}   {2}\n".format(col1, col2, col3))
 	else:
 		print("{0:3}      {1:15}   {2}".format(col1, col2, col3))
 
 def print_rule(text):
-	global logfile
-	if logfile:
+	global count, errors, logfile, rules, unit
+	if rules:
+		errors = compare_rule(count, text, unit)
+		count += 1
+	elif logfile:
 		log.write("  " + text + "\n")
 	elif verbose:
 		print("  " + text)
@@ -91,7 +111,7 @@ def print_bold(token, lexeme):
 		except TypeError: "blank"
 
 def print_error(expected, token, lexeme):
-	global logfile
+	global logfile, rules
 	if logfile:
 		try:
 			print("Syntax Error: expected {0} but {1} {2} given, line {3}\n".format(expected, token, lexeme, num))
@@ -100,7 +120,8 @@ def print_error(expected, token, lexeme):
 		try:
 			print("\033[1;31m  Syntax Error:\033[0m expected \033[1m{0}\033[0m but \033[1m{1}\033[0m `{2}` given, line {3}".format(expected, token, lexeme, num))
 		except TypeError: "blank"
-	dump_exit(10)
+	if not rules:
+		dump_exit(10)
 
 def print_exit(text):
 	global logfile
@@ -134,10 +155,11 @@ def target(n=1):
 	try:
 		with open(filename, 'r', 1) as f:
 
-			global array, count, errors
+			global array, count, errors, num
 			del array[:]
 			count = 0
 			errors = 0
+			num = 1
 
 			if stage == 1:
 				if debug:
@@ -148,30 +170,23 @@ def target(n=1):
 
 			elif stage == 2:
 				# <Rat15su>
-				token, lexeme = get_lex(f)
-				print_bold(token, lexeme)
+				token, lexeme = marker(f)
 				# <Opt Function Definitions>
-				token, lexeme = get_lex(f)
-				print_bold(token, lexeme)
+				token, lexeme = marker(f)
 				# <Opt Declaration List> <Statement List>
 				token, lexeme = opt_dec_list(f, token, lexeme)
 				# End
-				token, lexeme = get_lex(f)
-				print_bold(token, lexeme)
+				token, lexeme = marker(f)
 
 			elif stage == 3:
 				# <Rat15su>
-				token, lexeme = get_lex(f)
-				print_bold(token, lexeme)
+				token, lexeme = marker(f)
 				# <Opt Function Definitions>
-				token, lexeme = get_lex(f)
-				print_bold(token, lexeme)
+				token, lexeme = marker(f)
 				# <Opt Declaration List> <Statement List>
 				token, lexeme = opt_dec_list(f, token, lexeme)
 				# End
-				token, lexeme = get_lex(f)
-				print_bold(token, lexeme)
-
+				token, lexeme = marker(f)
 				# Output
 				if not logfile:
 					if verbose:
@@ -197,27 +212,36 @@ def get_lex(f):
 	try:
 		token, lexeme = lexer(f)
 	except TypeError: "EOF"
+	checkrat(f, token, lexeme)
 
+	return token, lexeme
+
+def marker(f):
+	token, lexeme = get_lex(f)
+	print_bold(token, lexeme)
+	if lexeme == None:
+		pass
+	elif lexeme != "$$":
+		print_error("$$", token, lexeme)
+	return token, lexeme
+
+def checkrat(f, token, lexeme):
+	global pos
 	if lexeme == None:
 		if pos < 3:
 			print_exit("unexpected EOF")
 		elif pos > 3:
 			print_exit("end of file")
-	if lexeme == "$$":
-		checkrat(f, token, lexeme)
-
-	return token, lexeme
-
-def checkrat(f, token, lexeme):
-	global pos
-	if pos == 0:
-		print_rule("<Rat15su> ::= $$ <Opt Function Definitions> $$ <Opt Declaration List> <Statement List> $$")
+	elif lexeme == "$$":
+		if pos == 0:
+			rule1 = "<Rat15su> ::= $$ <Opt Function Definitions> "
+			rule2 = "$$ <Opt Declaration List> <Statement List> $$"
+			print_rule(rule1 + rule2)
+		elif pos > 2:
+			print_error("end of file", token, lexeme)
 		pos += 1
 	elif pos > 2:
 		print_error("end of file", token, lexeme)
-	else:
-		pos += 1
-
 
 def gen_instr(op, oprnd):
 	global index
@@ -251,9 +275,10 @@ def dump_table():
 				print_row(row[0], row[1], row[2])
 
 def dump_symbols():
-	global ids
+	global icount, ids
+	icount = len(ids)-1
 	for s in range(0, len(ids)):
-		print_row(ids[s], 5000+s, "integer")
+		print_legend(ids[s], 5000+s, "integer")
 
 def opt_dec_list(f, token, lexeme):
 	print_rule("<Opt Declaration List> ::= <Declaration List>")
@@ -475,8 +500,8 @@ def while_loop(f, token, lexeme):
 
 def back_patch(jump_addr):
 	addr = jump.pop()
-	t1, t2, t3 = table[addr]
-	table[addr] = (t1, t2, jump_addr)
+	t1, t2, t3 = table[addr-1]
+	table[addr-1] = (t1, t2, jump_addr)
 
 def condition(f, token, lexeme):
 	token, lexeme = express(f, token, lexeme)
@@ -807,6 +832,13 @@ true     false     axy123r  a
 &  123abc .123  !  a_x   a123 123.
 
 """
+	elif n == 5:
+		testcase = """
+$$
+$$
+	while(i < max) i = i + 1;
+$$
+"""
 
 	try:
 		f = open(temp, 'w')
@@ -815,8 +847,8 @@ true     false     axy123r  a
 	f.close()
 
 	print(testcase, "\n================")
-	global stage
-	stage = 1
+	global unit
+	unit = n
 	target(n)
 
 
@@ -873,11 +905,96 @@ def compare_token(count, token, lexeme, n):
 		if token_unit[count] == token and lexeme_unit[count] == lexeme:
 			status = "OK"
 		else:
-			status = "FAIL"
+			status = "\033[1;31mFAIL\033[0m"
 			global errors
 			errors += 1
 
 		print("{0:10} {1:10} {2:15} {3:10} {4}".format(status, token_unit[count], lexeme_unit[count], token, lexeme))
+	else:
+		print("==> FATAL ERROR: unexpected EOF")
+		exit(5)
+
+	return errors
+
+def compare_rule(count, syntax, unit):
+	if unit == 5:
+		syntax_unit = ['<Rat15su> ::= $$ <Opt Function Definitions> $$ <Opt Declaration List> <Statement List> $$',\
+					   '<Opt Declaration List> ::= <Declaration List>', '<Declaration List> ::= <Declaration>;',\
+					   '<Statement List> ::= <Statement>', '<Statement> ::= <While>', '<Expression> := <Term> <Expression Prime>',\
+					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>', '<Term Prime> := ɛ',\
+					   '<Expression> := <Term> <Expression Prime>', '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>',\
+					   '<Term Prime> := ɛ', '<Statement> ::= <Assign>', '<Statement> ::= <Assign>',\
+					   '<Assign> ::= <Identifier> = <Expression>', '<Expression> := <Term> <Expression Prime>',\
+					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>', '<Term Prime> := ɛ',\
+					   '<Expression Prime> := + <Term> <Expression Prime>', '<Term> := <Factor> <Term Prime>', '<Factor> := <Integer>',
+					   '<Term Prime> := ɛ', '<Expression Prime> := ɛ', '<Statement List> ::= <Statement>']
+	else:
+		print("ARRRR: Invalid test case")
+		exit(4)
+
+	if len(syntax_unit) > count:
+		if syntax_unit[count] == syntax:
+			status = "OK"
+		else:
+			status = "\033[1;31mFAIL\033[0m"
+			global errors
+			errors += 1
+
+		print("  {0}\n  {1}\n{2}".format(syntax_unit[count], syntax, status))
+	else:
+		print("==> FATAL ERROR: unexpected EOF")
+		exit(5)
+
+	return errors
+
+def compare_asm(count, address, op, oprnd, unit):
+	if unit == 5:
+		address_unit = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
+		op_unit = ['LABEL', 'PUSHM', 'PUSHM', 'LES', 'JUMPZ', 'PUSHM', 'PUSHM', 'ADD', 'POPM', 'JUMP']
+		oprnd_unit = ['', '5000', '5001', '', '11', '5000', '5001', '', '5000', '1']
+	else:
+		print("ARRRR: Invalid test case")
+		exit(4)
+
+	if len(address_unit) > count and len(op_unit) > count and len(oprnd_unit) > count:
+		if address_unit[count] == str(address) and op_unit[count] == str(op) and oprnd_unit[count] == str(oprnd):
+			status = "OK"
+		else:
+			status = "\033[1;31mFAIL\033[0m"
+			global errors
+			errors += 1
+
+		print("{0}         {1:5}            {2:5}     {3}".format(address_unit[count], op_unit[count], oprnd_unit[count], ""))
+		print("{0}         {1:5}            {2:5}     {3}\n".format(str(address), str(op), str(oprnd), status))
+	else:
+		print("==> FATAL ERROR: unexpected EOF")
+		exit(5)
+
+	return errors
+
+def compare_mem(icount, varid, location, vartype, unit):
+	global ids
+	i = icount-1
+
+	if unit == 5:
+		varid_unit = ['i', 'max']
+		location_unit = ['5000', '5001']
+		vartype_unit = ['integer', 'integer']
+	else:
+		print("ARRRR: Invalid test case")
+		exit(4)
+
+	if len(varid_unit) > i and len(location_unit) > i and len(vartype_unit) > i:
+		if varid_unit[i] == str(varid) and location_unit[i] == str(location) and vartype_unit[i] == str(vartype):
+			status = "OK"
+		else:
+			status = "\033[1;31mFAIL\033[0m"
+			global errors
+			errors += 1
+
+		print("{0:5}        {1:5}        {2:8}     {3}".format(varid_unit[i], location_unit[i], vartype_unit[i], ""))
+		print("{0:5}        {1:5}        {2:8}     {3}\n".format(str(varid), str(location), str(vartype), status))
+
 	else:
 		print("==> FATAL ERROR: unexpected EOF")
 		exit(5)
@@ -896,16 +1013,19 @@ else:
 	exit(1)
 
 # Check file exists
-if re.match(r"\-t|\-r|\-\-test|\-\-rules", option) and len(sys.argv) > 2:
+if re.match(r"\-t|\-r|\-m|\-\-test|\-\-rules|\-\-memory", option) and len(sys.argv) > 2:
 	print_usage()
 	exit(1)
 
 if filename == "--test" or filename == "-t":
 	filename = temp
 	option = "--test"
-elif filename == "--test2" or filename == "-tt":
+elif filename == "--rules" or filename == "-r":
 	filename = temp
-	option = "--test2"
+	option = "--rules"
+elif filename == "--memory" or filename == "-m":
+	filename = temp
+	option = "--memory"
 elif filename == "-h" or filename == "--help":
 	print_usage()
 	exit(1)
@@ -960,18 +1080,25 @@ elif option == "--assembly" or option == "-a":
 	target()
 elif option == "--test" or option == "-t":
 	test = True
+	stage = 1
 	unit_test(1)
 	unit_test(2)
 	unit_test(3)
 	unit_test(4)
 	os.remove(temp)
 elif option == "--rules" or option == "-r":
-	test = True
+	logfile = False
+	rules = True
 	verbose = True
-	unit_test(1)
-	unit_test(2)
-	unit_test(3)
-	unit_test(4)
+	stage = 2
+	unit_test(5)
+	os.remove(temp)
+elif option == "--memory" or option == "-m":
+	logfile = False
+	memory = True
+	verbose = False
+	stage = 3
+	unit_test(5)
 	os.remove(temp)
 else:
 	print("ARRRR: unknown function call")
