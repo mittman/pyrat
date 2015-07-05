@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
-# version = 1.6
+# version = 1.7
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
@@ -155,10 +155,13 @@ def target(n=1):
 	try:
 		with open(filename, 'r', 1) as f:
 
-			global array, count, errors, num
-			del array[:]
+			global array, ids, jump, known, table, count, errors, icount, pos, index, num
+			del array[:], ids[:], jump[:], known[:], table[:]
 			count = 0
 			errors = 0
+			icount = 0
+			pos = 0
+			index = 1
 			num = 1
 
 			if stage == 1:
@@ -839,6 +842,23 @@ $$
 	while(i < max) i = i + 1;
 $$
 """
+	elif n == 6:
+		testcase = """
+$$
+$$
+  integer i,max,sum;
+
+  sum = 0;
+  i = 1;
+
+  read(max);
+  while (i < max) {
+    sum = sum + 1;
+    i = i + 1; }
+  write(sum+max);
+$$
+"""
+
 
 	try:
 		f = open(temp, 'w')
@@ -928,6 +948,32 @@ def compare_rule(count, syntax, unit):
 					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>', '<Term Prime> := ɛ',\
 					   '<Expression Prime> := + <Term> <Expression Prime>', '<Term> := <Factor> <Term Prime>', '<Factor> := <Integer>',
 					   '<Term Prime> := ɛ', '<Expression Prime> := ɛ', '<Statement List> ::= <Statement>']
+	elif unit == 6:
+		syntax_unit = ['<Rat15su> ::= $$ <Opt Function Definitions> $$ <Opt Declaration List> <Statement List> $$',\
+					   '<Opt Declaration List> ::= <Declaration List>', '<Declaration List> ::= <Declaration>;',\
+					   '<Declaration> ::= integer', '<Qualifier> ::= integer', '<Qualifier> ::= integer', '<Qualifier> ::= integer',\
+					   '<Statement List> ::= <Statement>', '<Statement> ::= <Assign>', '<Statement> ::= <Assign>',\
+					   '<Assign> ::= <Identifier> = <Expression>', '<Expression> := <Term> <Expression Prime>',\
+					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Integer>', '<Term Prime> := ɛ', '<Expression Prime> := ɛ',\
+					   '<Statement List> ::= <Statement>', '<Statement> ::= <Assign>', '<Statement> ::= <Assign>',\
+					   '<Assign> ::= <Identifier> = <Expression>', '<Expression> := <Term> <Expression Prime>',\
+					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Integer>', '<Term Prime> := ɛ', '<Expression Prime> := ɛ',\
+					   '<Statement List> ::= <Statement>', '<Statement> ::= <Read>', '<Read> ::= read ( <IDs> );', '<IDs> ::= <Identifier>',\
+					   '<Statement List> ::= <Statement>', '<Statement> ::= <While>', '<Expression> := <Term> <Expression Prime>',\
+					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>', '<Term Prime> := ɛ',\
+					   '<Expression> := <Term> <Expression Prime>', '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>',\
+					   '<Term Prime> := ɛ', '<Statement> ::= <Compound>', '<Statement List> ::= <Statement>', '<Statement> ::= <Assign>',\
+					   '<Statement> ::= <Assign>', '<Assign> ::= <Identifier> = <Expression>', '<Expression> := <Term> <Expression Prime>',\
+					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>', '<Term Prime> := ɛ',\
+					   '<Expression Prime> := + <Term> <Expression Prime>', '<Term> := <Factor> <Term Prime>', '<Factor> := <Integer>',\
+					   '<Term Prime> := ɛ', '<Expression Prime> := ɛ', '<Statement List> ::= <Statement>', '<Statement> ::= <Assign>',\
+					   '<Statement> ::= <Assign>', '<Assign> ::= <Identifier> = <Expression>', '<Expression> := <Term> <Expression Prime>',\
+					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>', '<Term Prime> := ɛ',\
+					   '<Expression Prime> := + <Term> <Expression Prime>', '<Term> := <Factor> <Term Prime>', '<Factor> := <Integer>',\
+					   '<Term Prime> := ɛ', '<Expression Prime> := ɛ', '<Statement List> ::= <Statement>', '<Statement List> ::= <Statement>',\
+					   '<Statement> ::= <Write>', '<Expression> := <Term> <Expression Prime>', '<Term> := <Factor> <Term Prime>',\
+					   '<Factor> := <Identifier>', '<Term Prime> := ɛ', '<Expression Prime> := + <Term> <Expression Prime>',\
+					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>', '<Term Prime> := ɛ', '<Statement List> ::= <Statement>']
 	else:
 		print("ARRRR: Invalid test case")
 		exit(4)
@@ -952,6 +998,13 @@ def compare_asm(count, address, op, oprnd, unit):
 		address_unit = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
 		op_unit = ['LABEL', 'PUSHM', 'PUSHM', 'LES', 'JUMPZ', 'PUSHM', 'PUSHM', 'ADD', 'POPM', 'JUMP']
 		oprnd_unit = ['', '5000', '5001', '', '11', '5000', '5001', '', '5000', '1']
+	elif unit == 6:
+		address_unit = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18',\
+                        '19', '20', '21', '22', '23', '24']
+		op_unit = ['PUSHI', 'POPM', 'PUSHI', 'POPM', 'PUSHS', 'POPM', 'LABEL', 'PUSHM', 'PUSHM', 'LES', 'JUMPZ', 'PUSHM',\
+                   'PUSHM', 'ADD', 'POPM', 'PUSHM', 'PUSHI', 'ADD', 'POPM', 'JUMP', 'PUSHM', 'PUSHM', 'ADD', 'POPS']
+		oprnd_unit = ['0', '5002', '1', '5000', '', '5001', '', '5000', '5001', '', '21', '5002', '5000', '', '5002', '5000',\
+                     '1', '', '5000', '7', '5002', '5001', '', '']
 	else:
 		print("ARRRR: Invalid test case")
 		exit(4)
@@ -974,12 +1027,16 @@ def compare_asm(count, address, op, oprnd, unit):
 
 def compare_mem(icount, varid, location, vartype, unit):
 	global ids
-	i = icount-1
+	i = icount-len(ids)+1
 
 	if unit == 5:
 		varid_unit = ['i', 'max']
 		location_unit = ['5000', '5001']
 		vartype_unit = ['integer', 'integer']
+	elif unit == 6:
+		varid_unit = ['i', 'max', 'sum']
+		location_unit = ['5000', '5001', '5002']
+		vartype_unit = ['integer', 'integer', 'integer']
 	else:
 		print("ARRRR: Invalid test case")
 		exit(4)
@@ -1092,6 +1149,7 @@ elif option == "--rules" or option == "-r":
 	verbose = True
 	stage = 2
 	unit_test(5)
+	unit_test(6)
 	os.remove(temp)
 elif option == "--memory" or option == "-m":
 	logfile = False
@@ -1099,6 +1157,7 @@ elif option == "--memory" or option == "-m":
 	verbose = False
 	stage = 3
 	unit_test(5)
+	unit_test(6)
 	os.remove(temp)
 else:
 	print("ARRRR: unknown function call")
