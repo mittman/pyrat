@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
-# version = 1.7
+# version = 1.8
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
@@ -72,6 +72,7 @@ def banner():
 def print_row(col1, col2, col3=""):
 	global count, errors, logfile, memory, unit
 	if memory:
+
 		errors = compare_asm(count, col1, col2, col3, unit)
 		count += 1
 	elif logfile:
@@ -301,7 +302,7 @@ def declaration_list(f, token, lexeme):
 def declaration(f, token, lexeme):
 	if lexeme == "integer":
 		print_rule("<Declaration> ::= integer")
-		gen_instr("PUSHI", 0)
+		#gen_instr("PUSHI", 0)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
 		token, lexeme = dprime(f, token, lexeme, "integer")
@@ -309,7 +310,7 @@ def declaration(f, token, lexeme):
 			print_error(";", token, lexeme)
 	elif lexeme == "boolean":
 		print_rule("<Declaration> ::= boolean")
-		gen_instr("PUSHI", 0)
+		#gen_instr("PUSHI", 0)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
 		token, lexeme = dprime(f, token, lexeme, "boolean")
@@ -317,7 +318,7 @@ def declaration(f, token, lexeme):
 			print_error(";", token, lexeme)
 	elif lexeme == "real":
 		print_rule("<Declaration> ::= real")
-		gen_instr("PUSHI", 0)
+		#gen_instr("PUSHI", 0)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
 		token, lexeme = dprime(f, token, lexeme, "real")
@@ -400,10 +401,11 @@ def assign(f, token, lexeme):
 		if lexeme == "=":
 			token, lexeme = get_lex(f)
 			print_bold(token, lexeme)
+			if token == "integer":
+				gen_instr("PUSHI", lexeme)
 			token, lexeme = express(f, token, lexeme)
-			print_rule("<Expression Prime> := ɛ")
-			addr = get_address(saveType, save)
 			gen_instr("POPM", addr)
+			print_rule("<Expression Prime> := ɛ")
 		else:
 			print_error("=", token, lexeme)
 	else:
@@ -414,16 +416,26 @@ def assign(f, token, lexeme):
 
 def express(f, token, lexeme):
 	print_rule("<Expression> := <Term> <Expression Prime>")
+	addr = get_address(token, lexeme)
 	token, lexeme = term(f, token, lexeme)
-	token, lexeme = eprime(f, token, lexeme)
+	token, lexeme = eprime(f, token, lexeme, addr)
 	return token, lexeme
 
-def eprime(f, token, lexeme):
+def eprime(f, token, lexeme, addr=None):
 	print_rule("<Term Prime> := ɛ")
 	if lexeme == "+":
 		print_rule("<Expression Prime> := + <Term> <Expression Prime>")
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
+
+		if addr != None:
+			gen_instr("PUSHM", addr)
+		if token == "identifier":
+			addr = get_address(token, lexeme)
+			gen_instr("PUSHM", addr)
+		else:
+			gen_instr("PUSHI", lexeme)
+
 		token, lexeme = term(f, token, lexeme)
 		gen_instr("ADD", None)
 		token, lexeme = eprime(f, token, lexeme)
@@ -464,14 +476,10 @@ def factor(f, token, lexeme):
 	global saveType, save
 	if token == "identifier":
 		print_rule("<Factor> := <Identifier>")
-		addr = get_address(token, lexeme)
-		gen_instr("PUSHM", addr)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
 	elif token == "integer":
 		print_rule("<Factor> := <Integer>")
-		addr = get_address(saveType, save)
-		gen_instr("PUSHM", addr)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
 	else:
@@ -487,6 +495,7 @@ def while_loop(f, token, lexeme):
 	if lexeme == "(":
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
+		gen_instr("PUSHM", get_address(token, lexeme))
 		token, lexeme = condition(f, token, lexeme)
 		if lexeme == ")":
 			token, lexeme = get_lex(f)
@@ -512,22 +521,27 @@ def condition(f, token, lexeme):
 		global index
 		op = lexeme
 		token, lexeme = get_lex(f)
+		addr = get_address(token, lexeme)
 		print_bold(token, lexeme)
 		token, lexeme = express(f, token, lexeme)
 
 		if op == "<":
+			gen_instr("PUSHM", addr)
 			gen_instr("LES", None)
 			jump.append(index)
 			gen_instr("JUMPZ", None)
 		elif op == ">":
+			gen_instr("PUSHM", addr)
 			gen_instr("GRT", None)
 			jump.append(index)
 			gen_instr("JUMPZ", None)
 		elif op == "==":
+			gen_instr("PUSHM", addr)
 			gen_instr("EQU", None)
 			jump.append(index)
 			gen_instr("JUMPZ", None)
 		elif op == "!=":
+			gen_instr("PUSHM", addr)
 			gen_instr("NEQ", None)
 			jump.append(index)
 			gen_instr("JUMPZ", None)
@@ -600,9 +614,12 @@ def read_state(f, token, lexeme):
 	if lexeme == "(":
 		print_rule("<IDs> ::= <Identifier>")
 		token, lexeme = get_lex(f)
+		addr = get_address(token, lexeme)
 		print_bold(token, lexeme)
 		token, lexeme = id_list(f, token, lexeme)
 		if lexeme == ")":
+			gen_instr("PUSHS", None)
+			gen_instr("POPM", addr)
 			token, lexeme = get_lex(f)
 			print_bold(token, lexeme)
 			if lexeme != ";":
@@ -621,6 +638,7 @@ def write_state(f, token, lexeme):
 		print_bold(token, lexeme)
 		token, lexeme = express(f, token, lexeme)
 		if lexeme == ")":
+			gen_instr("POPS", None)
 			token, lexeme = get_lex(f)
 			print_bold(token, lexeme)
 			if lexeme != ";":
@@ -853,7 +871,7 @@ $$
 
   read(max);
   while (i < max) {
-    sum = sum + 1;
+    sum = sum + i;
     i = i + 1; }
   write(sum+max);
 $$
@@ -965,7 +983,7 @@ def compare_rule(count, syntax, unit):
 					   '<Term Prime> := ɛ', '<Statement> ::= <Compound>', '<Statement List> ::= <Statement>', '<Statement> ::= <Assign>',\
 					   '<Statement> ::= <Assign>', '<Assign> ::= <Identifier> = <Expression>', '<Expression> := <Term> <Expression Prime>',\
 					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>', '<Term Prime> := ɛ',\
-					   '<Expression Prime> := + <Term> <Expression Prime>', '<Term> := <Factor> <Term Prime>', '<Factor> := <Integer>',\
+					   '<Expression Prime> := + <Term> <Expression Prime>', '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>',\
 					   '<Term Prime> := ɛ', '<Expression Prime> := ɛ', '<Statement List> ::= <Statement>', '<Statement> ::= <Assign>',\
 					   '<Statement> ::= <Assign>', '<Assign> ::= <Identifier> = <Expression>', '<Expression> := <Term> <Expression Prime>',\
 					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>', '<Term Prime> := ɛ',\
