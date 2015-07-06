@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
-# version = 2.0
+# version = 2.1
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
@@ -317,7 +317,6 @@ def declaration_list(f, token, lexeme):
 def declaration(f, token, lexeme):
 	if lexeme == "integer":
 		print_rule("<Declaration> ::= integer")
-		#gen_instr("PUSHI", 0)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
 		token, lexeme = dprime(f, token, lexeme, "integer")
@@ -325,7 +324,6 @@ def declaration(f, token, lexeme):
 			print_error(";", token, lexeme)
 	elif lexeme == "boolean":
 		print_rule("<Declaration> ::= boolean")
-		#gen_instr("PUSHI", 0)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
 		token, lexeme = dprime(f, token, lexeme, "boolean")
@@ -333,7 +331,6 @@ def declaration(f, token, lexeme):
 			print_error(";", token, lexeme)
 	elif lexeme == "real":
 		print_rule("<Declaration> ::= real")
-		#gen_instr("PUSHI", 0)
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
 		token, lexeme = dprime(f, token, lexeme, "real")
@@ -423,7 +420,6 @@ def assign(f, token, lexeme):
 			print_bold(token, lexeme)
 			if token == "integer":
 				gen_instr("PUSHI", lexeme)
-			### FIX ME ###
 			elif token == "identifier":
 				gen_instr("PUSHM", get_address(token, lexeme))
 			token, lexeme = express(f, token, lexeme)
@@ -465,11 +461,8 @@ def eprime(f, token, lexeme):
 		print_rule("<Expression Prime> := - <Term> <Expression Prime>")
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
-		if addr != None:
-			gen_instr("PUSHM", addr)
-		elif token == "identifier":
-			addr = get_address(token, lexeme)
-			gen_instr("PUSHM", addr)
+		if token == "identifier":
+			gen_instr("PUSHM", get_address(token, lexeme))
 		else:
 			gen_instr("PUSHI", lexeme)
 		token, lexeme = term(f, token, lexeme)
@@ -491,26 +484,22 @@ def tprime(f, token, lexeme):
 		print_rule("<Term Prime> := * <Factor>")
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
-		if addr != None:
-			gen_instr("PUSHM", addr)
 		if token == "identifier":
-			addr = get_address(token, lexeme)
-			gen_instr("PUSHM", addr)
+			gen_instr("PUSHM", get_address(token, lexeme))
 		else:
 			gen_instr("PUSHI", lexeme)
+		token, lexeme = term(f, token, lexeme)
 		gen_instr("MUL", None)
 		token, lexeme = tprime(f, token, lexeme)
 	elif lexeme == "/":
 		print_rule("<Term Prime> := / <Factor>")
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
-		if addr != None:
-			gen_instr("PUSHM", addr)
 		if token == "identifier":
-			addr = get_address(token, lexeme)
-			gen_instr("PUSHM", addr)
+			gen_instr("PUSHM", get_address(token, lexeme))
 		else:
 			gen_instr("PUSHI", lexeme)
+		token, lexeme = term(f, token, lexeme)
 		gen_instr("DIV", None)
 		token, lexeme = tprime(f, token, lexeme)
 	return token, lexeme
@@ -621,7 +610,6 @@ def if_state(f, token, lexeme):
 			token, lexeme = get_lex(f)
 			print_bold(token, lexeme)
 			token, lexeme = else_state(f, token, lexeme)
-			#gen_instr("JUMP", addr)
 			back_patch(index)
 			if lexeme == "fi":
 				token, lexeme = get_lex(f)
@@ -1278,3 +1266,5 @@ elif option == "--memory" or option == "-m":
 else:
 	print("ARRRR: unknown function call")
 	exit(3)
+
+###
