@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
-# version = 1.9
+# version = 2.0
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
@@ -30,6 +30,7 @@ symbols = r"[></]|[+*-]|[,;\(\){}]"
 
 # Global
 array = []
+fail = []
 jump = []
 table = []
 known = []
@@ -156,7 +157,7 @@ def target(n=1):
 	try:
 		with open(filename, 'r', 1) as f:
 
-			global array, ids, jump, known, table, count, errors, icount, pos, index, num
+			global array, fail, ids, jump, known, table, count, errors, icount, pos, index, num
 			del array[:], ids[:], jump[:], known[:], table[:]
 			count = 0
 			errors = 0
@@ -206,6 +207,10 @@ def target(n=1):
 					dump_table()
 					log.write("\n{0} {1:10} {2}\n".format("Identifier", "MemoryLocation", "Type"))
 					dump_symbols()
+
+				if errors > 0:
+					print("ARRRR: Unit test", n, "failed")
+					fail.append(n)
 
 	except ValueError: "cannot read file"
 	f.close()
@@ -418,6 +423,9 @@ def assign(f, token, lexeme):
 			print_bold(token, lexeme)
 			if token == "integer":
 				gen_instr("PUSHI", lexeme)
+			### FIX ME ###
+			elif token == "identifier":
+				gen_instr("PUSHM", get_address(token, lexeme))
 			token, lexeme = express(f, token, lexeme)
 			gen_instr("POPM", addr)
 			print_rule("<Expression Prime> := ɛ")
@@ -431,23 +439,23 @@ def assign(f, token, lexeme):
 
 def express(f, token, lexeme):
 	print_rule("<Expression> := <Term> <Expression Prime>")
-	addr = get_address(token, lexeme)
-	token, lexeme = term(f, token, lexeme)
-	token, lexeme = eprime(f, token, lexeme, addr)
+	if token == "identifier":
+		token, lexeme = term(f, token, lexeme)
+		token, lexeme = eprime(f, token, lexeme)
+	else:
+		token, lexeme = term(f, token, lexeme)
+		token, lexeme = eprime(f, token, lexeme)
 	return token, lexeme
 
 
-def eprime(f, token, lexeme, addr=None):
+def eprime(f, token, lexeme):
 	print_rule("<Term Prime> := ɛ")
 	if lexeme == "+":
 		print_rule("<Expression Prime> := + <Term> <Expression Prime>")
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
-		if addr != None:
-			gen_instr("PUSHM", addr)
 		if token == "identifier":
-			addr = get_address(token, lexeme)
-			gen_instr("PUSHM", addr)
+			gen_instr("PUSHM", get_address(token, lexeme))
 		else:
 			gen_instr("PUSHI", lexeme)
 		token, lexeme = term(f, token, lexeme)
@@ -459,7 +467,7 @@ def eprime(f, token, lexeme, addr=None):
 		print_bold(token, lexeme)
 		if addr != None:
 			gen_instr("PUSHM", addr)
-		if token == "identifier":
+		elif token == "identifier":
 			addr = get_address(token, lexeme)
 			gen_instr("PUSHM", addr)
 		else:
@@ -518,8 +526,12 @@ def factor(f, token, lexeme):
 		print_rule("<Factor> := <Integer>")
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
+	elif lexeme == "true" or lexeme == "false":
+		print_rule("<Factor> := " + lexeme)
+		token, lexeme = get_lex(f)
+		print_bold(token, lexeme)
 	else:
-		print_error("identifier or integer", token, lexeme)
+		print_error("identifier or integer or boolean", token, lexeme)
 	return token, lexeme
 
 
@@ -609,6 +621,7 @@ def if_state(f, token, lexeme):
 			token, lexeme = get_lex(f)
 			print_bold(token, lexeme)
 			token, lexeme = else_state(f, token, lexeme)
+			#gen_instr("JUMP", addr)
 			back_patch(index)
 			if lexeme == "fi":
 				token, lexeme = get_lex(f)
@@ -680,6 +693,7 @@ def write_state(f, token, lexeme):
 	if lexeme == "(":
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
+		gen_instr("PUSHM", get_address(token, lexeme))
 		token, lexeme = express(f, token, lexeme)
 		if lexeme == ")":
 			gen_instr("POPS", None)
@@ -1078,8 +1092,8 @@ def compare_asm(count, address, op, oprnd, unit):
 		oprnd_unit = ['5000', '5001', '', '7', '5002', '5000']
 	elif unit == 6:
 		address_unit = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
-		op_unit = ['LABEL', 'PUSHM', 'PUSHM', 'LES', 'JUMPZ', 'PUSHM', 'PUSHM', 'ADD', 'POPM', 'JUMP']
-		oprnd_unit = ['', '5000', '5001', '', '11', '5000', '5001', '', '5000', '1']
+		op_unit = ['LABEL', 'PUSHM', 'PUSHM', 'LES', 'JUMPZ', 'PUSHM', 'PUSHI', 'ADD', 'POPM', 'JUMP']
+		oprnd_unit = ['', '5000', '5001', '', '11', '5000', '1', '', '5000', '1']
 	elif unit == 7:
 		address_unit = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18',\
                         '19', '20', '21', '22', '23', '24']
@@ -1257,6 +1271,10 @@ elif option == "--memory" or option == "-m":
 	unit_test(6)
 	unit_test(7)
 	os.remove(temp)
+	if len(fail) > 0:
+		verbose = True
+		banner()
+		print("ARRRR: Unit test(s)", str(fail).strip('[]'), "failed")
 else:
 	print("ARRRR: unknown function call")
 	exit(3)
