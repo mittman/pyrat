@@ -210,6 +210,7 @@ def target(n=1):
 	except ValueError: "cannot read file"
 	f.close()
 
+
 def get_lex(f):
 	token = None
 	lexeme = None
@@ -220,6 +221,7 @@ def get_lex(f):
 
 	return token, lexeme
 
+
 def marker(f):
 	token, lexeme = get_lex(f)
 	print_bold(token, lexeme)
@@ -228,6 +230,7 @@ def marker(f):
 	elif lexeme != "$$":
 		print_error("$$", token, lexeme)
 	return token, lexeme
+
 
 def checkrat(f, token, lexeme):
 	global pos
@@ -247,6 +250,7 @@ def checkrat(f, token, lexeme):
 	elif pos > 2:
 		print_error("end of file", token, lexeme)
 
+
 def gen_instr(op, oprnd):
 	global index
 	table.insert(index, (index, op, oprnd))
@@ -262,12 +266,14 @@ def get_address(token, lexeme):
 		known.append(lexeme)
 		return 5000 + len(known) - 1
 
+
 def dump_exit(n):
 	global stage
 	if stage > 2:
 		dump_table()
 		dump_symbols()
 	exit(n)
+
 
 def dump_table():
 	global table
@@ -278,17 +284,20 @@ def dump_table():
 			else:
 				print_row(row[0], row[1], row[2])
 
+
 def dump_symbols():
 	global icount, ids
 	icount = len(ids)-1
 	for s in range(0, len(ids)):
 		print_legend(ids[s], 5000+s, "integer")
 
+
 def opt_dec_list(f, token, lexeme):
 	print_rule("<Opt Declaration List> ::= <Declaration List>")
 	token, lexeme, declared = declaration_list(f, token, lexeme)
 	token, lexeme = statement_list(f, token, lexeme, declared)	
 	return token, lexeme
+
 
 def declaration_list(f, token, lexeme):
 	print_rule("<Declaration List> ::= <Declaration>;")
@@ -298,6 +307,7 @@ def declaration_list(f, token, lexeme):
 	if lexeme == ";":
 		return token, lexeme, False
 	return token, lexeme, True
+
 
 def declaration(f, token, lexeme):
 	if lexeme == "integer":
@@ -327,6 +337,7 @@ def declaration(f, token, lexeme):
 
 	return token, lexeme
 
+
 def dprime(f, token, lexeme, qualifier):
 	if token == "identifier":
 		print_rule("<Qualifier> ::= " + qualifier)
@@ -340,6 +351,7 @@ def dprime(f, token, lexeme, qualifier):
 
 	return token, lexeme
 
+
 def statement_list(f, token, lexeme, declared=False):
 	print_rule("<Statement List> ::= <Statement>")
 
@@ -352,6 +364,7 @@ def statement_list(f, token, lexeme, declared=False):
 		if lexeme != "$$":
 			token, lexeme = statement_list(f, token, lexeme)
 	return token, lexeme
+
 
 def statement(f, token, lexeme):
 	if token == "identifier":
@@ -383,9 +396,11 @@ def statement(f, token, lexeme):
 
 	return token, lexeme
 
+
 def compound(f, token, lexeme):
 	token, lexeme = statement_list(f, token, lexeme)
 	return token, lexeme
+
 
 def assign(f, token, lexeme):
 	global save, saveType
@@ -421,13 +436,13 @@ def express(f, token, lexeme):
 	token, lexeme = eprime(f, token, lexeme, addr)
 	return token, lexeme
 
+
 def eprime(f, token, lexeme, addr=None):
 	print_rule("<Term Prime> := ɛ")
 	if lexeme == "+":
 		print_rule("<Expression Prime> := + <Term> <Expression Prime>")
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
-
 		if addr != None:
 			gen_instr("PUSHM", addr)
 		if token == "identifier":
@@ -435,7 +450,6 @@ def eprime(f, token, lexeme, addr=None):
 			gen_instr("PUSHM", addr)
 		else:
 			gen_instr("PUSHI", lexeme)
-
 		token, lexeme = term(f, token, lexeme)
 		gen_instr("ADD", None)
 		token, lexeme = eprime(f, token, lexeme)
@@ -443,9 +457,17 @@ def eprime(f, token, lexeme, addr=None):
 		print_rule("<Expression Prime> := - <Term> <Expression Prime>")
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
+		if addr != None:
+			gen_instr("PUSHM", addr)
+		if token == "identifier":
+			addr = get_address(token, lexeme)
+			gen_instr("PUSHM", addr)
+		else:
+			gen_instr("PUSHI", lexeme)
 		token, lexeme = term(f, token, lexeme)
 		gen_instr("SUB", None)
 		token, lexeme = eprime(f, token, lexeme)
+
 	return token, lexeme
 
 
@@ -486,6 +508,7 @@ def factor(f, token, lexeme):
 		print_error("identifier or integer", token, lexeme)
 	return token, lexeme
 
+
 def while_loop(f, token, lexeme):
 	global index
 	addr = index
@@ -510,10 +533,12 @@ def while_loop(f, token, lexeme):
 
 	return token, lexeme
 
+
 def back_patch(jump_addr):
 	addr = jump.pop()
 	t1, t2, t3 = table[addr-1]
 	table[addr-1] = (t1, t2, jump_addr)
+
 
 def condition(f, token, lexeme):
 	token, lexeme = express(f, token, lexeme)
@@ -551,6 +576,7 @@ def condition(f, token, lexeme):
 		print_error("<, >, ==, !=", token, lexeme)
 	return token, lexeme
 
+
 def if_state(f, token, lexeme):
 	token, lexeme = get_lex(f)
 	print_bold(token, lexeme)
@@ -558,6 +584,7 @@ def if_state(f, token, lexeme):
 		addr = index
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
+		gen_instr("PUSHM", get_address(token, lexeme))
 		token, lexeme = condition(f, token, lexeme)
 		if lexeme == ")":
 			token, lexeme = get_lex(f)
@@ -579,6 +606,7 @@ def if_state(f, token, lexeme):
 	else:
 		print_error("(", token, lexeme)
 	return token, lexeme
+
 
 def else_state(f, token, lexeme):
 	if lexeme == "else":
@@ -607,6 +635,7 @@ def id_list(f, token, lexeme):
 			return token, lexeme
 	return token, lexeme
 
+
 def read_state(f, token, lexeme):
 	print_rule("<Read> ::= read ( <IDs> );")
 	token, lexeme = get_lex(f)
@@ -629,6 +658,7 @@ def read_state(f, token, lexeme):
 	else:
 		print_error("(", token, lexeme)
 	return token, lexeme
+
 
 def write_state(f, token, lexeme):
 	token, lexeme = get_lex(f)
@@ -857,10 +887,17 @@ true     false     axy123r  a
 		testcase = """
 $$
 $$
-	while(i < max) i = i + 1;
+    if(a < b) a = c; fi
 $$
 """
 	elif n == 6:
+		testcase = """
+$$
+$$
+	while(i < max) i = i + 1;
+$$
+"""
+	elif n == 7:
 		testcase = """
 $$
 $$
@@ -958,6 +995,15 @@ def compare_rule(count, syntax, unit):
 	if unit == 5:
 		syntax_unit = ['<Rat15su> ::= $$ <Opt Function Definitions> $$ <Opt Declaration List> <Statement List> $$',\
 					   '<Opt Declaration List> ::= <Declaration List>', '<Declaration List> ::= <Declaration>;',\
+					   '<Statement List> ::= <Statement>', '<Statement> ::= <If>', '<Expression> := <Term> <Expression Prime>',\
+					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>', '<Term Prime> := ɛ',\
+					   '<Expression> := <Term> <Expression Prime>', '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>',\
+					   '<Term Prime> := ɛ', '<Statement> ::= <Assign>', '<Statement> ::= <Assign>',\
+					   '<Assign> ::= <Identifier> = <Expression>', '<Expression> := <Term> <Expression Prime>',\
+					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>', '<Term Prime> := ɛ', '<Expression Prime> := ɛ']
+	elif unit == 6:
+		syntax_unit = ['<Rat15su> ::= $$ <Opt Function Definitions> $$ <Opt Declaration List> <Statement List> $$',\
+					   '<Opt Declaration List> ::= <Declaration List>', '<Declaration List> ::= <Declaration>;',\
 					   '<Statement List> ::= <Statement>', '<Statement> ::= <While>', '<Expression> := <Term> <Expression Prime>',\
 					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>', '<Term Prime> := ɛ',\
 					   '<Expression> := <Term> <Expression Prime>', '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>',\
@@ -966,7 +1012,7 @@ def compare_rule(count, syntax, unit):
 					   '<Term> := <Factor> <Term Prime>', '<Factor> := <Identifier>', '<Term Prime> := ɛ',\
 					   '<Expression Prime> := + <Term> <Expression Prime>', '<Term> := <Factor> <Term Prime>', '<Factor> := <Integer>',
 					   '<Term Prime> := ɛ', '<Expression Prime> := ɛ', '<Statement List> ::= <Statement>']
-	elif unit == 6:
+	elif unit == 7:
 		syntax_unit = ['<Rat15su> ::= $$ <Opt Function Definitions> $$ <Opt Declaration List> <Statement List> $$',\
 					   '<Opt Declaration List> ::= <Declaration List>', '<Declaration List> ::= <Declaration>;',\
 					   '<Declaration> ::= integer', '<Qualifier> ::= integer', '<Qualifier> ::= integer', '<Qualifier> ::= integer',\
@@ -1013,10 +1059,14 @@ def compare_rule(count, syntax, unit):
 
 def compare_asm(count, address, op, oprnd, unit):
 	if unit == 5:
+		address_unit = ['1', '2', '3', '4', '5', '6']
+		op_unit = ['PUSHM', 'PUSHM', 'LES', 'JUMPZ', 'PUSHM', 'POPM']
+		oprnd_unit = ['5000', '5001', '', '7', '5002', '5000']
+	elif unit == 6:
 		address_unit = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
 		op_unit = ['LABEL', 'PUSHM', 'PUSHM', 'LES', 'JUMPZ', 'PUSHM', 'PUSHM', 'ADD', 'POPM', 'JUMP']
 		oprnd_unit = ['', '5000', '5001', '', '11', '5000', '5001', '', '5000', '1']
-	elif unit == 6:
+	elif unit == 7:
 		address_unit = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18',\
                         '19', '20', '21', '22', '23', '24']
 		op_unit = ['PUSHI', 'POPM', 'PUSHI', 'POPM', 'PUSHS', 'POPM', 'LABEL', 'PUSHM', 'PUSHM', 'LES', 'JUMPZ', 'PUSHM',\
@@ -1048,10 +1098,14 @@ def compare_mem(icount, varid, location, vartype, unit):
 	i = icount-len(ids)+1
 
 	if unit == 5:
+		varid_unit = ['a', 'b', 'c']
+		location_unit = ['5000', '5001', '5002']
+		vartype_unit = ['integer', 'integer', 'integer']
+	elif unit == 6:
 		varid_unit = ['i', 'max']
 		location_unit = ['5000', '5001']
 		vartype_unit = ['integer', 'integer']
-	elif unit == 6:
+	elif unit == 7:
 		varid_unit = ['i', 'max', 'sum']
 		location_unit = ['5000', '5001', '5002']
 		vartype_unit = ['integer', 'integer', 'integer']
@@ -1168,6 +1222,7 @@ elif option == "--rules" or option == "-r":
 	stage = 2
 	unit_test(5)
 	unit_test(6)
+	unit_test(7)
 	os.remove(temp)
 elif option == "--memory" or option == "-m":
 	logfile = False
@@ -1176,6 +1231,7 @@ elif option == "--memory" or option == "-m":
 	stage = 3
 	unit_test(5)
 	unit_test(6)
+	unit_test(7)
 	os.remove(temp)
 else:
 	print("ARRRR: unknown function call")
