@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # pyrat.py - Rat15su language compiler
-# version = 1.8
+# version = 1.9
 # Copyright Kevin Mittman <kmittman@csu.fullerton.edu>
 # (C) 2015 All Rights Reserved.
 
@@ -49,6 +49,7 @@ saveType = None
 # Functions
 def print_usage():
 	print("USAGE: pyrat.py [file]")
+	print("USAGE: pyrat.py % [file]")
 	print("USAGE: pyrat.py [--|-a|-l|-s] [file]")
 	print("USAGE: pyrat.py [--debug] [file]")
 	print("USAGE: pyrat.py [--test|--rules]")
@@ -56,7 +57,7 @@ def print_usage():
 def print_token(text):
 	global logfile, stage
 	if stage == 1:
-		if logfile:
+		if logfile and verbose:
 			log.write(text + "\n")
 		elif verbose:
 			print(text)
@@ -64,7 +65,7 @@ def print_token(text):
 def banner():
 	text = "\n===========================\n"
 	global logfile
-	if logfile:
+	if logfile and verbose:
 		log.write(text + "\n")
 	elif verbose:
 		print(text)
@@ -72,7 +73,6 @@ def banner():
 def print_row(col1, col2, col3=""):
 	global count, errors, logfile, memory, unit
 	if memory:
-
 		errors = compare_asm(count, col1, col2, col3, unit)
 		count += 1
 	elif logfile:
@@ -95,14 +95,14 @@ def print_rule(text):
 	if rules:
 		errors = compare_rule(count, text, unit)
 		count += 1
-	elif logfile:
+	elif logfile and verbose:
 		log.write("  " + text + "\n")
 	elif verbose:
 		print("  " + text)
 
 def print_bold(token, lexeme):
 	global logfile
-	if logfile:
+	if logfile and verbose:
 		try:
 			log.write("Token: {0:15} Lexeme: {1}\n".format(token, lexeme))
 		except TypeError: "blank"
@@ -115,7 +115,7 @@ def print_error(expected, token, lexeme):
 	global logfile, rules
 	if logfile:
 		try:
-			print("Syntax Error: expected {0} but {1} {2} given, line {3}\n".format(expected, token, lexeme, num))
+			print("Syntax Error: expected {0} but {1} `{2}` given, line {3}\n".format(expected, token, lexeme, num))
 		except TypeError: "blank"
 	else:
 		try:
@@ -483,12 +483,26 @@ def tprime(f, token, lexeme):
 		print_rule("<Term Prime> := * <Factor>")
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
+		if addr != None:
+			gen_instr("PUSHM", addr)
+		if token == "identifier":
+			addr = get_address(token, lexeme)
+			gen_instr("PUSHM", addr)
+		else:
+			gen_instr("PUSHI", lexeme)
 		gen_instr("MUL", None)
 		token, lexeme = tprime(f, token, lexeme)
 	elif lexeme == "/":
 		print_rule("<Term Prime> := / <Factor>")
 		token, lexeme = get_lex(f)
 		print_bold(token, lexeme)
+		if addr != None:
+			gen_instr("PUSHM", addr)
+		if token == "identifier":
+			addr = get_address(token, lexeme)
+			gen_instr("PUSHM", addr)
+		else:
+			gen_instr("PUSHI", lexeme)
 		gen_instr("DIV", None)
 		token, lexeme = tprime(f, token, lexeme)
 	return token, lexeme
@@ -1170,6 +1184,16 @@ if logfile:
 
 # Parse parameters
 if option == "all":
+	print("==> running lexer")
+	stage = 1
+	target()
+	banner()
+	print("==> running compiler")
+	stage = 3
+	target()
+	print("==> saved to " + output)
+elif option == "%":
+	verbose = True
 	print("==> running lexer")
 	stage = 1
 	target()
